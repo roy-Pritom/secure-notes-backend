@@ -11,9 +11,9 @@ import { Types } from 'mongoose';
 
 import {
   PaginatedResponseDto,
-  PaginationQueryDto,
   PaginationService,
 } from '../../common/pagination';
+import { SearchQueryDto } from '../../common/search';
 import { SECURITY_CONFIG_KEY, SecurityConfig } from '../../config';
 import { NotesService } from '../notes/notes.service';
 import { PostsService } from '../posts/posts.service';
@@ -90,7 +90,7 @@ export class UsersService {
   }
 
   async findAll(
-    query: PaginationQueryDto,
+    query: SearchQueryDto,
   ): Promise<PaginatedResponseDto<UserResponseDto>> {
     return this.pagination.toResponse(
       await this.usersRepository.findPaginated(query),
@@ -181,7 +181,7 @@ export class UsersService {
 
   async findPosts(
     id: Types.ObjectId,
-    query: PaginationQueryDto,
+    query: SearchQueryDto,
   ): Promise<UserPostsDto> {
     const result = await this.usersRepository.findWithPosts(id, query);
     if (!result) {

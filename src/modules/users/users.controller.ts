@@ -25,10 +25,8 @@ import {
 import { Types } from 'mongoose';
 
 import { Roles } from '../../common/decorators';
-import {
-  PaginatedResponseDto,
-  PaginationQueryDto,
-} from '../../common/pagination';
+import { PaginatedResponseDto } from '../../common/pagination';
+import { SearchQueryDto } from '../../common/search';
 import { JwtAuthGuard, RolesGuard } from '../../common/guards';
 import { ParseObjectIdPipe } from '../../common/pipes/parse-object-id.pipe';
 import { API_VERSION } from '../../utils/constant';
@@ -62,9 +60,13 @@ export class UsersController {
 
   @Roles(UserRole.Admin)
   @Get()
-  @ApiOperation({ summary: 'List all users, newest first' })
+  @ApiOperation({
+    summary: 'List all users, newest first',
+    description:
+      '`searchTerm` matches, case-insensitively, any part of a first name, last name, email or bio.',
+  })
   findAll(
-    @Query() query: PaginationQueryDto,
+    @Query() query: SearchQueryDto,
   ): Promise<PaginatedResponseDto<UserResponseDto>> {
     return this.usersService.findAll(query);
   }
@@ -112,12 +114,16 @@ export class UsersController {
 
   /** Posts are public content: any signed-in user may read them. */
   @Get(':id/posts')
-  @ApiOperation({ summary: "Fetch a user's posts through a single $lookup" })
+  @ApiOperation({
+    summary: "Fetch a user's posts through a single $lookup",
+    description:
+      '`searchTerm` matches, case-insensitively, any part of a title, body, excerpt or tag.',
+  })
   @ApiOkResponse({ type: UserPostsDto })
   @ApiNotFoundResponse({ description: 'User does not exist' })
   findPosts(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
-    @Query() query: PaginationQueryDto,
+    @Query() query: SearchQueryDto,
   ): Promise<UserPostsDto> {
     return this.usersService.findPosts(id, query);
   }

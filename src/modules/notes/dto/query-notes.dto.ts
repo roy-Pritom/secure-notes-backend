@@ -8,12 +8,15 @@ import {
   MaxLength,
 } from 'class-validator';
 
-import { PaginationQueryDto } from '../../../common/pagination';
+import { SearchQueryDto } from '../../../common/search';
 import { toBoolean, toLowerCase } from '../../../common/transformers';
 import { MAX_NOTE_TAG_LENGTH } from '../schemas/note.schema';
 
-/** The filters a note listing accepts, on top of page/limit/sortOrder. */
-export class QueryNotesDto extends PaginationQueryDto {
+/**
+ * The filters a note listing accepts, on top of page/limit/sortOrder and the
+ * inherited `searchTerm`.
+ */
+export class QueryNotesDto extends SearchQueryDto {
   @ApiPropertyOptional({
     example: 'chess',
     description: 'Return only notes carrying this tag',

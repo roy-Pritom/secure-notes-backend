@@ -59,7 +59,7 @@ export class NotesController {
   @ApiOperation({
     summary: 'List my notes — pinned first, then newest',
     description:
-      'Archived notes are excluded unless `archived=true`. Optional `tag` and `pinned` filters narrow the page further.',
+      'Archived notes are excluded unless `archived=true`. Optional `tag` and `pinned` filters narrow the page further, and `searchTerm` matches, case-insensitively, any part of a title, content or tag.',
   })
   findOwn(
     @CurrentUserId() userId: Types.ObjectId,
@@ -71,7 +71,10 @@ export class NotesController {
   // Before `:id`, and admin-only: this is the cross-account view.
   @Roles(UserRole.Admin)
   @Get('all')
-  @ApiOperation({ summary: "List everyone's notes" })
+  @ApiOperation({
+    summary: "List everyone's notes",
+    description: 'Takes the same filters and `searchTerm` as the own listing.',
+  })
   @ApiForbiddenResponse({ description: 'Requires the admin role' })
   findAll(
     @Query() query: QueryNotesDto,

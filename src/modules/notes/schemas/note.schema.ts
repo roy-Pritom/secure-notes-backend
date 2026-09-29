@@ -5,11 +5,14 @@ import { HydratedDocument, Model, Types } from 'mongoose';
 import { BaseSchema } from '../../../common/schemas/base.schema';
 import { applyDocumentSerialization } from '../../../common/schemas/serialization';
 import { User } from '../../users/schemas/user.schema';
+import { NoteColor } from '../enums';
 
 export const NOTE_COLLECTION = 'notes';
 
 export const MAX_NOTE_TITLE_LENGTH = 160;
 export const MAX_NOTE_CONTENT_LENGTH = 20_000;
+export const MAX_NOTE_TAGS = 10;
+export const MAX_NOTE_TAG_LENGTH = 30;
 
 @Schema({
   collection: NOTE_COLLECTION,
@@ -19,7 +22,6 @@ export const MAX_NOTE_CONTENT_LENGTH = 20_000;
   minimize: false,
 })
 export class Note extends BaseSchema {
-  /** Set from the access token, never from the request body. */
   @ApiProperty({ example: '6650f1a2b3c4d5e6f7a8b9c0' })
   @Prop({ type: Types.ObjectId, ref: User.name, required: true })
   owner!: Types.ObjectId;
@@ -44,6 +46,37 @@ export class Note extends BaseSchema {
     maxlength: MAX_NOTE_CONTENT_LENGTH,
   })
   content!: string;
+
+  /** Stored lowercase and trimmed, so `?tag=` is an exact equality match. */
+  @ApiProperty({
+    example: ['chess', 'openings'],
+    type: [String],
+    maxItems: MAX_NOTE_TAGS,
+  })
+  @Prop({
+    type: [String],
+    default: [],
+    trim: true,
+    lowercase: true,
+    maxlength: MAX_NOTE_TAG_LENGTH,
+  })
+  tags!: string[];
+
+  @ApiProperty({ example: false, default: false })
+  @Prop({ type: Boolean, default: false })
+  isPinned!: boolean;
+
+  @ApiProperty({ example: false, default: false })
+  @Prop({ type: Boolean, default: false })
+  isArchived!: boolean;
+
+  @ApiProperty({ enum: NoteColor, default: NoteColor.Default })
+  @Prop({
+    type: String,
+    enum: Object.values(NoteColor),
+    default: NoteColor.Default,
+  })
+  color!: NoteColor;
 }
 
 export type NoteDocument = HydratedDocument<Note>;
@@ -51,24 +84,23 @@ export type NoteModel = Model<NoteDocument>;
 
 export const NoteSchema = SchemaFactory.createForClass(Note);
 
-/*
- * Two listings, two indexes:
- *
- * 1. own_notes_by_created    a user paging through their own notes
- * 2. all_notes_by_created    an admin paging through everyone's notes
- *
- * The second is not a prefix of the first — with `owner` between the equality
- * key and the sort key, an unfiltered admin listing could not walk index 1 in
- * `createdAt` order. Reading a single note goes through `_id`.
- */
+
 NoteSchema.index(
-  { owner: 1, isDeleted: 1, createdAt: -1 },
+  { owner: 1, isDeleted: 1, isArchived: 1, isPinned: -1, createdAt: -1 },
   { name: 'own_notes_by_created' },
 );
 
 NoteSchema.index(
-  { isDeleted: 1, createdAt: -1 },
+  { isDeleted: 1, isArchived: 1, isPinned: -1, createdAt: -1 },
   { name: 'all_notes_by_created' },
+);
+
+// Multikey on `tags`, so it ends the key list: a multikey field cannot be
+// followed by a sort key the index is expected to serve. `isArchived` and the
+// ordering are applied to what this returns.
+NoteSchema.index(
+  { owner: 1, isDeleted: 1, tags: 1 },
+  { name: 'own_notes_by_tag' },
 );
 
 applyDocumentSerialization(NoteSchema);

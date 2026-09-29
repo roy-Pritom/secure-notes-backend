@@ -1,6 +1,7 @@
 import { PipelineStage, Types } from 'mongoose';
 
-import { POST_COLLECTION } from '../../posts/schemas/post.schema';
+import { searchFilter } from '../../../common/search';
+import { Post, POST_COLLECTION } from '../../posts/schemas/post.schema';
 
 const FULL_NAME = { $concat: ['$firstName', ' ', '$lastName'] };
 
@@ -74,17 +75,23 @@ export function interestGroupsPipeline(
   ];
 }
 
+/** A post is found by what it says and by how it was filed. */
+const POST_SEARCHABLE_FIELDS = ['title', 'body', 'excerpt', 'tags'] as const;
+
 /**
  * Scenario 2 — one user with their posts, joined in a single pass.
  *
  * Index: `posts_by_author_created` ({ author: 1, isDeleted: 1, createdAt: -1 })
  * drives the join on `author`, the sub-pipeline's active-only `$match`, and its
- * `$sort` — all three read straight off the one index.
+ * `$sort` — all three read straight off the one index. A `searchTerm` joins
+ * that same `$match` so it is applied before the `$facet`, which keeps `total`
+ * describing the filtered set rather than the whole authorship.
  */
 export function userPostsPipeline(
   userId: Types.ObjectId,
   skip: number,
   limit: number,
+  searchTerm?: string,
 ): PipelineStage[] {
   return [
     { $match: { _id: userId, isDeleted: false } },
@@ -95,7 +102,12 @@ export function userPostsPipeline(
         foreignField: 'author',
         as: 'posts',
         pipeline: [
-          { $match: { isDeleted: false } },
+          {
+            $match: {
+              isDeleted: false,
+              ...searchFilter<Post>(searchTerm, POST_SEARCHABLE_FIELDS),
+            },
+          },
           { $sort: { createdAt: -1 } },
           {
             $facet: {

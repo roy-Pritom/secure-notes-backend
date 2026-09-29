@@ -2,11 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { ProjectionType, QueryOptions, Types, UpdateQuery } from 'mongoose';
 
-import {
-  PagedResult,
-  PaginationQueryDto,
-  PaginationService,
-} from '../../common/pagination';
+import { PagedResult, PaginationService } from '../../common/pagination';
+import { SearchQueryDto, searchFilter } from '../../common/search';
 import { interestGroupsPipeline, userPostsPipeline } from './aggregations';
 import { QueryInterestsDto } from './dto';
 import { User, type UserDocument, type UserModel } from './schemas/user.schema';
@@ -17,10 +14,6 @@ import {
   UserPostsResult,
 } from './types';
 
-/**
- * The only place that talks to the `users` collection, so every query
- * consistently excludes soft-deleted rows.
- */
 @Injectable()
 export class UsersRepository {
   constructor(
@@ -43,7 +36,7 @@ export class UsersRepository {
     return this.userModel.findOne(this.live({ _id: id }), projection).exec();
   }
 
-  /** @param withCredentials loads the `select: false` auth fields — auth flow only. */
+
   async findByEmail(
     email: string,
     withCredentials = false,
@@ -64,13 +57,16 @@ export class UsersRepository {
     return found !== null;
   }
 
-  /** Served by `active_users_by_created`. */
+  /**
+   * Served by `active_users_by_created`; a `searchTerm` filters the rows that
+   * index walks rather than replacing it.
+   */
   async findPaginated(
-    query: PaginationQueryDto,
+    query: SearchQueryDto,
   ): Promise<PagedResult<UserDocument>> {
     return this.pagination.fetchPage<UserDocument>(
       this.userModel,
-      this.live(),
+      this.live(searchFilter<User>(query.searchTerm, SEARCHABLE_FIELDS)),
       query,
     );
   }
@@ -89,10 +85,7 @@ export class UsersRepository {
       .exec();
   }
 
-  /**
-   * The row stays for audit, but its email address is freed. Sessions are
-   * revoked by `UsersService`, which owns the `refresh_tokens` collaborator.
-   */
+  
   async softDeleteById(id: Types.ObjectId): Promise<UserDocument | null> {
     return this.updateById(id, {
       $set: { isDeleted: true, deletedAt: new Date() },
@@ -110,11 +103,13 @@ export class UsersRepository {
 
   async findWithPosts(
     userId: Types.ObjectId,
-    query: PaginationQueryDto,
+    query: SearchQueryDto,
   ): Promise<UserPostsResult | null> {
     const [result] = await this.userModel.aggregate<UserPostsResult>(
-      userPostsPipeline(userId, query.skip, query.limit),
+      userPostsPipeline(userId, query.skip, query.limit, query.searchTerm),
     );
     return result ?? null;
   }
 }
+
+const SEARCHABLE_FIELDS = ['firstName', 'lastName', 'email', 'bio'] as const;

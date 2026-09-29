@@ -306,4 +306,102 @@ describe('Notes (e2e)', () => {
       expect(titles(await list())).toEqual(['Tagged', 'Plain']);
     });
   });
+
+  describe('free-text search', () => {
+    let searcher: Account;
+
+    const titles = (page: PageBody<NoteBody>): string[] =>
+      page.items.map((item) => item.title);
+
+    const list = async (queryString = ''): Promise<PageBody<NoteBody>> =>
+      (
+        await request(app.getHttpServer())
+          .get(`/api/v1/notes${queryString}`)
+          .set(...auth(searcher))
+          .expect(200)
+      ).body as PageBody<NoteBody>;
+
+    beforeAll(async () => {
+      searcher = await register(app, 'searcher@example.com');
+
+      const create = async (body: Record<string, unknown>): Promise<void> => {
+        await request(app.getHttpServer())
+          .post('/api/v1/notes')
+          .set(...auth(searcher))
+          .send(body)
+          .expect(201);
+      };
+
+      await create({
+        title: 'Rook endgames',
+        content: 'Philidor and Lucena positions',
+        tags: ['strategy'],
+      });
+      await create({
+        title: 'Opening prep',
+        content: 'Najdorf lines against 1.e4',
+        tags: ['openings'],
+      });
+      await create({ title: 'Shopping list', content: 'Bread and milk' });
+      await create({
+        title: 'Old endgame notes',
+        content: 'Superseded',
+        isArchived: true,
+      });
+    });
+
+    it('matches the title, whatever the case', async () => {
+      expect(titles(await list('?searchTerm=ROOK'))).toEqual(['Rook endgames']);
+    });
+
+    it('matches the content', async () => {
+      expect(titles(await list('?searchTerm=najdorf'))).toEqual([
+        'Opening prep',
+      ]);
+    });
+
+    it('matches a tag the title and content do not mention', async () => {
+      expect(titles(await list('?searchTerm=strategy'))).toEqual([
+        'Rook endgames',
+      ]);
+    });
+
+    it('matches a substring, not only a whole word', async () => {
+      expect(titles(await list('?searchTerm=endgam'))).toEqual([
+        'Rook endgames',
+      ]);
+    });
+
+    it('narrows the other filters rather than escaping them', async () => {
+      // The archived note carries the term too, and stays hidden until asked for.
+      expect(titles(await list('?searchTerm=endgame&archived=true'))).toEqual([
+        'Old endgame notes',
+      ]);
+      expect(titles(await list('?searchTerm=endgame&tag=openings'))).toEqual(
+        [],
+      );
+    });
+
+    it('counts the matches, not the whole collection', async () => {
+      const page = await list('?searchTerm=e&limit=2');
+
+      expect(page.items).toHaveLength(2);
+      expect(page.meta.total).toBe(3);
+      expect(page.meta.totalPages).toBe(2);
+    });
+
+    it('takes the term as text, never as a pattern', async () => {
+      // Unescaped, `.*` would match every note; escaped, it matches the ones
+      // that literally contain it — none.
+      expect((await list('?searchTerm=.*')).meta.total).toBe(0);
+      expect((await list('?searchTerm=%5Ba-z%5D%2B')).meta.total).toBe(0);
+    });
+
+    it('rejects a term long enough to make the scan expensive', async () => {
+      await request(app.getHttpServer())
+        .get(`/api/v1/notes?searchTerm=${'a'.repeat(101)}`)
+        .set(...auth(searcher))
+        .expect(400);
+    });
+  });
 });

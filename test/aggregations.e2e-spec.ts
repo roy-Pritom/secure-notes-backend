@@ -199,6 +199,100 @@ describe('Aggregations (e2e)', () => {
     });
   });
 
+  describe('searchTerm', () => {
+    interface UserRow {
+      id: string;
+      email: string;
+      firstName: string;
+      lastName: string;
+    }
+
+    const emails = (page: PageBody<UserRow>): string[] =>
+      page.items.map((item) => item.email).sort();
+
+    const users = async (queryString = ''): Promise<PageBody<UserRow>> =>
+      (
+        await request(app.getHttpServer())
+          .get(`/api/v1/users${queryString}`)
+          .set(...auth(admin))
+          .expect(200)
+      ).body as PageBody<UserRow>;
+
+    // Registered without interests, so the grouping counts above stay whole.
+    beforeAll(async () => {
+      await register(app, 'lovelace@example.com', {
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+        bio: 'Writes about analytical engines.',
+      });
+      await register(app, 'hopper@example.com', {
+        firstName: 'Grace',
+        lastName: 'Hopper',
+        bio: 'Writes about compilers.',
+      });
+    });
+
+    it('finds a user by any part of their name, whatever the case', async () => {
+      expect(emails(await users('?searchTerm=LOVELACE'))).toEqual([
+        'lovelace@example.com',
+      ]);
+      expect(emails(await users('?searchTerm=grace'))).toEqual([
+        'hopper@example.com',
+      ]);
+    });
+
+    it('finds a user by their email or bio', async () => {
+      expect(emails(await users('?searchTerm=hopper@'))).toEqual([
+        'hopper@example.com',
+      ]);
+      expect(emails(await users('?searchTerm=analytical'))).toEqual([
+        'lovelace@example.com',
+      ]);
+    });
+
+    it('counts the matches and pages through them', async () => {
+      // The two bios above; every other account was registered without one.
+      const page = await users('?searchTerm=writes%20about&limit=1');
+
+      expect(page.meta.total).toBe(2);
+      expect(page.items).toHaveLength(1);
+    });
+
+    it('takes the term as text, never as a pattern', async () => {
+      expect((await users('?searchTerm=.*')).meta.total).toBe(0);
+    });
+
+    it("searches an author's posts inside the $lookup", async () => {
+      const matched = (
+        await request(app.getHttpServer())
+          .get(`/api/v1/users/${ada.id}/posts?searchTerm=THREE`)
+          .set(...auth(admin))
+          .expect(200)
+      ).body as UserPostsBody;
+
+      expect(matched.items.map((post) => post.title)).toEqual(['Post three']);
+      // The `$match` runs ahead of the `$facet`, so the total is of the
+      // matches — not of everything the author has written.
+      expect(matched.meta.total).toBe(1);
+      expect(matched.author.id).toBe(ada.id);
+
+      const byBody = (
+        await request(app.getHttpServer())
+          .get(`/api/v1/users/${ada.id}/posts?searchTerm=public%20content`)
+          .set(...auth(admin))
+          .expect(200)
+      ).body as UserPostsBody;
+      expect(byBody.meta.total).toBe(3);
+    });
+
+    it('rejects a term long enough to make the scan expensive', async () => {
+      await request(app.getHttpServer())
+        .get(`/api/v1/users?searchTerm=${'a'.repeat(101)}`)
+        .set(...auth(admin))
+        .expect(400);
+    });
+  });
+
   describe('declared indexes', () => {
     const names = async (collection: string): Promise<string[]> =>
       (await harness.connection.collection(collection).indexes())

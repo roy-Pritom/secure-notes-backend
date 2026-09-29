@@ -7,6 +7,7 @@ import {
   PaginationService,
   SortSpec,
 } from '../../common/pagination';
+import { searchFilter } from '../../common/search';
 import { QueryNotesDto } from './dto';
 import { Note, type NoteDocument, type NoteModel } from './schemas/note.schema';
 import { CreateNoteData } from './types';
@@ -31,12 +32,7 @@ export class NotesRepository {
     return this.noteModel.findOne(this.live({ _id: id })).exec();
   }
 
-  /**
-   * `owner` scopes the page to one account and is dropped for an admin
-   * listing; the two cases are served by `own_notes_by_created` and
-   * `all_notes_by_created` respectively, with `own_notes_by_tag` taking over
-   * when a tag is supplied.
-   */
+
   async findPaginated(
     query: QueryNotesDto,
     owner?: Types.ObjectId,
@@ -70,10 +66,7 @@ export class NotesRepository {
     });
   }
 
-  /**
-   * Every live note of one owner, in one write. Served by the
-   * `{ owner, isDeleted }` prefix of `own_notes_by_created`.
-   */
+
   async softDeleteByOwner(owner: Types.ObjectId): Promise<number> {
     const result = await this.noteModel
       .updateMany(this.live({ owner }), {
@@ -83,10 +76,7 @@ export class NotesRepository {
     return result.modifiedCount;
   }
 
-  /**
-   * `isArchived` is always pinned to a value rather than left open: an
-   * archived note is filed away, so it has to be asked for explicitly.
-   */
+  
   private buildFilter(
     query: QueryNotesDto,
     owner?: Types.ObjectId,
@@ -101,9 +91,15 @@ export class NotesRepository {
     if (query.pinned !== undefined) {
       filter.isPinned = query.pinned;
     }
-    return this.live(filter);
+    return this.live({
+      ...filter,
+      ...searchFilter(query.searchTerm, SEARCHABLE_FIELDS),
+    });
   }
 }
+
+/** A note is found by what it says and by how it was filed. */
+const SEARCHABLE_FIELDS = ['title', 'content', 'tags'] as const;
 
 /**
  * Pinned notes lead, then the requested date order. The descending page —
