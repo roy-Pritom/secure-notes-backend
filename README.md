@@ -1,161 +1,154 @@
 # Secure Notes API
 
-NestJS 11 + MongoDB (Mongoose 8) REST API.
+A note-taking backend with JWT authentication and role-based access control, built on
+NestJS and MongoDB.
 
-## Quick start
+- **Database** — MongoDB with Mongoose
+- **Authentication** — JWT access and refresh tokens, with rotation
+- **Passwords** — bcrypt, cost 12 by default
+- **Indexes** — every one declared with `schema.index(…)`, one per named query
+
+The entity diagram and the full index catalogue are in [`docs/ERD.pdf`](docs/ERD.pdf)
+(source: [`docs/erd.html`](docs/erd.html)).
+
+## Roles
+
+| Capability | User | Admin |
+| --- | :---: | :---: |
+| Create, update, delete, list own notes | ✅ | ✅ |
+| Read any note | — | ✅ |
+| Edit or delete another user's note | — | — |
+| Add, update, remove, list users | — | ✅ |
+| Users grouped by interest | — | ✅ |
+| Publish a post, read anyone's posts | ✅ | ✅ |
+
+An admin inherits every user capability: no route requires the `user` role, so an
+administrator is simply a user who also passes the admin checks. Reading everyone's
+notes is deliberately not the same as editing them — only an owner may write.
+
+## Running it
 
 ```bash
+cp .env.example .env          # then set JWT_SECRET and JWT_REFRESH_SECRET
+docker compose up -d mongo
 pnpm install
-cp .env.example .env          # then set MONGODB_URI and a real JWT_SECRET
-docker compose up -d mongo    # or point MONGODB_URI at an existing cluster
 pnpm start:dev
 ```
 
-The app refuses to boot if any environment variable is missing or malformed —
-see [`src/config/env.validation.ts`](src/config/env.validation.ts). Swagger UI
-is served at `/api/docs` outside production.
+Swagger UI is at `/api/docs` outside production.
 
-## Layout
-
-```
-src/
-├── config/                  env validation + typed, namespaced config
-│   ├── env.validation.ts      fail-fast contract for process.env
-│   ├── app|database|security.config.ts
-│   └── config.module.ts       the only place env is parsed
-├── database/
-│   └── mongoose-config.service.ts   connection options, pooling, events
-├── health/                  liveness / readiness / full report
-│   └── indicators/            custom Mongo connection indicator
-├── common/                  shared building blocks
-│   ├── dto/                   pagination query + paginated response
-│   ├── filters/               single global filter + Mongo error mapper
-│   ├── pipes/                 ObjectId parsing, global validation pipe
-│   ├── schemas/               BaseSchema, serialization helper
-│   ├── transformers/          typed class-transformer helpers
-│   ├── validators/            cross-field validators
-│   └── types/                 Lean<T>, PaginatedResult<T>, …
-└── modules/
-    └── users/               one feature module, the template for the rest
-        ├── schemas/           Mongoose schema + indexes + methods
-        ├── dto/               create / update / query / response
-        ├── enums/ types/
-        ├── users.repository.ts   all Mongoose access lives here
-        ├── users.service.ts      business rules, hashing, conflicts
-        └── users.controller.ts   HTTP surface only
-```
-
-The rule the layout encodes: **controllers never touch Mongoose, services never
-build queries, repositories never make business decisions.** A feature module
-exports only its service, so nothing outside `users/` can reach the collection.
-
-## Health endpoints
-
-Excluded from the global prefix and version-neutral, so they stay stable at:
-
-| Endpoint            | Purpose                                                  |
-| ------------------- | -------------------------------------------------------- |
-| `GET /health`       | Full report: Mongo ping, connection state, heap, RSS      |
-| `GET /health/liveness`  | Process only — no dependencies, so a DB outage never restarts healthy pods |
-| `GET /health/readiness` | Mongo must be reachable; fails → pod leaves the load balancer |
-| `GET /health/ping`  | Cheapest possible check for LB probes                     |
-
-Check them locally:
+Set `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` to have the first
+administrator created on boot; an empty database otherwise has no account able to
+promote anyone. It runs once and is a no-op on every later boot.
 
 ```bash
-curl -s localhost:3000/health | jq        # full report
-curl -s -o /dev/null -w '%{http_code}\n' localhost:3000/health/readiness
+pnpm test         # unit
+pnpm test:e2e     # end-to-end, on an in-memory mongod
+pnpm typecheck && pnpm lint && pnpm build
 ```
 
-A healthy readiness response is `200 {"status":"ok", ...}`; when Mongo is
-unreachable it is `503 {"status":"error", "error":{"mongodb-connection":
-{"status":"down","state":"disconnected"}}, ...}` — the standard Terminus
-payload, which the global exception filter deliberately passes through
-unreshaped.
+## API
 
-### Kubernetes
+All routes are versioned under `/api/v1` and require a bearer token unless marked
+public. Every list endpoint takes `page`, `limit` (≤ 100) and `sortOrder`.
 
-```yaml
-livenessProbe: # restart only a genuinely wedged process
-  httpGet: { path: /health/liveness, port: 3000 }
-  initialDelaySeconds: 15
-  periodSeconds: 20
-  failureThreshold: 3
-readinessProbe: # pull out of the Service while Mongo is unreachable
-  httpGet: { path: /health/readiness, port: 3000 }
-  initialDelaySeconds: 5
-  periodSeconds: 10
-  failureThreshold: 2
-startupProbe: # give a slow first connection room before liveness kicks in
-  httpGet: { path: /health/ping, port: 3000 }
-  periodSeconds: 5
-  failureThreshold: 30
+| Method | Path | Access | Purpose |
+| --- | --- | --- | --- |
+| POST | `/auth/register` | public | Create an account and sign in |
+| POST | `/auth/login` | public | Exchange credentials for a token pair |
+| POST | `/auth/refresh` | public | Rotate an expiring token pair |
+| POST | `/auth/logout` | any | End the current session |
+| GET | `/profile` | any | My profile |
+| PATCH | `/profile` | any | Update my name or interests |
+| PATCH | `/profile/password` | any | Change my password |
+| POST | `/notes` | any | Create a note |
+| GET | `/notes` | any | List my notes |
+| GET | `/notes/:id` | owner / admin | Read one note |
+| PATCH | `/notes/:id` | owner | Update a note |
+| DELETE | `/notes/:id` | owner | Delete a note |
+| GET | `/notes/all` | admin | List everyone's notes |
+| POST | `/users` | admin | Add a user, with roles |
+| GET | `/users` | admin | List all users |
+| GET | `/users/:id` | admin | Read one user |
+| PATCH | `/users/:id` | admin | Update a user, roles and status included |
+| DELETE | `/users/:id` | admin | Remove a user |
+| GET | `/users/interests` | admin | **Scenario 1** — users grouped by interest |
+| GET | `/users/:id/posts` | any | **Scenario 2** — a user's posts via `$lookup` |
+| POST | `/posts` | any | Publish a post |
+| GET | `/health`, `/health/liveness`, `/health/readiness`, `/health/ping` | public | Probes |
+
+A note that belongs to someone else answers `404`, not `403`: ownership must not be
+probeable. Editing someone else's note — including as an admin — answers `403`.
+
+## Indexing
+
+Six indexes across three collections, each tied to one access path. The full table,
+with the reasoning for every index and for the ones deliberately left out, is on page
+two of [`docs/ERD.pdf`](docs/ERD.pdf).
+
+| Collection | Index | Keys |
+| --- | --- | --- |
+| users | `uniq_active_email` | `{ email: 1 }` unique, partial on `deletedAt: null` |
+| users | `active_users_by_created` | `{ deletedAt: 1, createdAt: -1 }` |
+| users | `active_users_by_interest` | `{ deletedAt: 1, interests: 1 }` |
+| notes | `own_notes_by_created` | `{ owner: 1, deletedAt: 1, createdAt: -1 }` |
+| notes | `all_notes_by_created` | `{ deletedAt: 1, createdAt: -1 }` |
+| posts | `posts_by_author_created` | `{ author: 1, createdAt: -1 }` |
+
+Single-document reads go through `_id`, which MongoDB already indexes. The request
+surface is kept inside what these cover: there is no free-text search and no `sortBy`
+parameter, so no query can ask for an ordering no index provides. An e2e test asserts
+the deployed index set matches this list exactly.
+
+## Aggregations
+
+Both pipelines live in
+[`src/modules/users/aggregations/user.pipelines.ts`](src/modules/users/aggregations/user.pipelines.ts).
+
+**Scenario 1 — users grouped by interests** (`GET /users/interests`). One
+`collection.aggregate()` call and nothing else:
+
+```
+$match → $unwind → $group → $sort → $facet → $project
 ```
 
-The split matters: pointing `livenessProbe` at `/health/readiness` is a common
-mistake that turns a brief database blip into a rolling restart of every
-healthy pod.
+The leading `$match` rides `active_users_by_interest`; passing `?interest=chess`
+turns it into an exact two-key equality. The `$facet` tail returns the page and the
+unpaged total together, so pagination costs no second round trip.
 
-### Docker Compose
+**Scenario 2 — a user's posts** (`GET /users/:id/posts`). A single pipeline with one
+`$lookup`:
 
-```yaml
-healthcheck:
-  test: ['CMD', 'node', '-e', "fetch('http://localhost:3000/health/readiness').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
-  interval: 15s
-  timeout: 5s
-  retries: 3
-  start_period: 30s
+```
+$match → $lookup (posts, sorted and paged in its sub-pipeline) → $unwind → $project
 ```
 
-## Security posture
+`$match` on `_id`; the join uses `posts_by_author_created` on `author`, and the
+sub-pipeline's `$sort: { createdAt: -1 }` is that same index's trailing key, so the
+ordering is read rather than computed.
 
-- **Env**: validated at boot; `MONGODB_URI` is never logged (errors log `.message` only).
-- **Input**: global `whitelist` + `forbidNonWhitelisted` validation, so unknown
-  body fields are a `400`, not a silent drop — this is what blocks mass-assignment
-  of `roles` / `passwordHash`.
-- **Passwords**: bcrypt, cost from config, capped at 72 bytes (bcrypt's real limit);
-  `passwordHash` is `select: false` and stripped again at serialization.
-- **Queries**: `sanitizeFilter` on, search terms regex-escaped, `sortBy` allow-listed,
-  `limit` hard-capped at 100.
-- **Errors**: one global filter; non-HTTP exceptions become a bare 500 and the
-  stack stays server-side. Duplicate-key errors never echo the offending value.
-- **Transport**: helmet, compression, CORS allow-list, 100 kb body cap,
-  `trust proxy = 1` so the throttler sees real client IPs.
+## Security
 
-## Testing
-
-```bash
-pnpm test        # unit + integration (real mongod via mongodb-memory-server)
-pnpm test:e2e    # boots the real AppModule against an in-memory mongod
-pnpm lint
-```
-
-Integration and e2e tests run against an actual mongod rather than mocks —
-index behaviour, `select: false` and the serialization transform are exactly
-the things a mocked model fails to catch.
-
-## Adding a feature module
-
-Copy `src/modules/users/` as the template:
-
-1. Schema extends `BaseSchema`, call `applyDocumentSerialization(schema)`.
-2. Register with `MongooseModule.forFeature` — never `forRoot`; the single
-   connection is owned by `DatabaseModule`.
-3. Repository takes the model, scopes reads to `deletedAt: null`.
-4. Export only the service from the module.
-5. Declare the controller route explicitly —
-   `@Controller({ path: 'notes', version: '1' })` — so the URL it serves is
-   visible in the file instead of coming from the global `defaultVersion`.
-
-## Notes / deliberate choices
-
-- **`strictQuery: 'throw'`** — querying a path that is not in the schema raises
-  instead of silently matching everything. Strict on purpose; relax it in
-  `mongoose-config.service.ts` if a dynamic-path query is ever needed.
-- **`autoIndex` / `autoCreate` are off in production** — indexes there should be
-  built deliberately by a migration, not on process start.
-- **Soft delete** — `deletedAt` plus a partial unique index on `email`, so a
-  deleted account keeps its audit row but releases its address.
-- **mongoose is pinned to `^8`** — mongoose 9 ships MongoDB driver 7, whose
-  handshake metadata is currently broken under Jest, and it removes the
-  `FilterQuery` type.
+- **Passwords** — bcrypt with a configurable cost; the hash is `select: false` and is
+  stripped again at serialization, so it cannot leak through a forgotten projection.
+- **Tokens** — access and refresh are signed with *different* secrets, and the
+  environment refuses to boot if they match. Each carries a `jti`, so two tokens
+  minted in the same second are never byte-identical.
+- **Refresh rotation** — only the SHA-256 digest of the live refresh token is stored.
+  Replaying a spent token drops the whole session. bcrypt is not used here on purpose:
+  it truncates at 72 bytes and would compare only a JWT's near-identical header.
+- **Session invalidation** — changing a password, or an admin changing roles or
+  status, clears the stored digest and ends every other session.
+- **Brute force** — the account locks for 15 minutes after 5 failed logins, and the
+  credential endpoints are rate limited well below the global ceiling. A login against
+  an unknown address still runs a bcrypt comparison, so timing does not reveal whether
+  an account exists, and both failures return the same message.
+- **Mass assignment** — the global validation pipe strips unknown properties *and*
+  rejects the request that carried them. Self-registration has no `roles` field at
+  all, and a note's `owner` comes from the token, never the body.
+- **Injection** — `sanitizeFilter` is on globally, route ids are parsed into real
+  `ObjectId`s before reaching a query, and `strict: 'throw'` rejects unknown paths
+  rather than dropping them silently.
+- **Transport and payloads** — helmet, CORS from an allow-list, a 100 kB body limit,
+  and exactly one trusted proxy hop so `X-Forwarded-For` cannot be forged past the
+  throttler.

@@ -11,8 +11,10 @@ import {
   Query,
 } from '@nestjs/common';
 import {
+  ApiBearerAuth,
   ApiConflictResponse,
   ApiCreatedResponse,
+  ApiForbiddenResponse,
   ApiNoContentResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
@@ -22,39 +24,62 @@ import {
 import { Types } from 'mongoose';
 
 import { PaginatedResponseDto } from '../../common/dto/paginated-response.dto';
+import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { ParseObjectIdPipe } from '../../common/pipes/parse-object-id.pipe';
 import { API_VERSION } from '../../utils/constant';
+import { Roles } from '../auth/decorators';
 import {
+  AdminUpdateUserDto,
   CreateUserDto,
-  QueryUsersDto,
-  UpdatePasswordDto,
-  UpdateUserDto,
+  InterestGroupDto,
+  QueryInterestsDto,
+  UserPostsDto,
   UserResponseDto,
 } from './dto';
+import { UserRole } from './enums';
 import { UsersService } from './users.service';
 
+/**
+ * User administration. Authorization is declared per route rather than on the
+ * class, so the one public-to-any-user route below cannot inherit it by mistake.
+ */
 @ApiTags('users')
+@ApiBearerAuth()
+@ApiForbiddenResponse({ description: 'Requires the admin role' })
 @Controller({ path: 'users', version: API_VERSION.V1 })
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
+  @Roles(UserRole.Admin)
   @Post()
-  @ApiOperation({ summary: 'Register a user' })
+  @ApiOperation({ summary: 'Add a user' })
   @ApiCreatedResponse({ type: UserResponseDto })
   @ApiConflictResponse({ description: 'Email already registered' })
   create(@Body() dto: CreateUserDto): Promise<UserResponseDto> {
-    // Role assignment stays off: self-registration can never elevate itself.
-    return this.usersService.create(dto);
+    return this.usersService.create(dto, true);
   }
 
+  @Roles(UserRole.Admin)
   @Get()
-  @ApiOperation({ summary: 'List users (paginated, filterable)' })
+  @ApiOperation({ summary: 'List all users, newest first' })
   findAll(
-    @Query() query: QueryUsersDto,
+    @Query() query: PaginationQueryDto,
   ): Promise<PaginatedResponseDto<UserResponseDto>> {
     return this.usersService.findAll(query);
   }
 
+  // Declared before `:id` so the literal segment wins the route match.
+  @Roles(UserRole.Admin)
+  @Get('interests')
+  @ApiOperation({ summary: 'Users grouped by interest (aggregation)' })
+  @ApiOkResponse({ type: [InterestGroupDto] })
+  findInterestGroups(
+    @Query() query: QueryInterestsDto,
+  ): Promise<PaginatedResponseDto<InterestGroupDto>> {
+    return this.usersService.findInterestGroups(query);
+  }
+
+  @Roles(UserRole.Admin)
   @Get(':id')
   @ApiOperation({ summary: 'Fetch one user' })
   @ApiOkResponse({ type: UserResponseDto })
@@ -65,32 +90,35 @@ export class UsersController {
     return this.usersService.findOne(id);
   }
 
+  @Roles(UserRole.Admin)
   @Patch(':id')
-  @ApiOperation({ summary: 'Update a user profile' })
+  @ApiOperation({ summary: 'Update a user, including roles and status' })
   @ApiOkResponse({ type: UserResponseDto })
   update(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
-    @Body() dto: UpdateUserDto,
+    @Body() dto: AdminUpdateUserDto,
   ): Promise<UserResponseDto> {
     return this.usersService.update(id, dto);
   }
 
-  @Patch(':id/password')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Change a password' })
-  @ApiNoContentResponse({ description: 'Password updated' })
-  changePassword(
-    @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
-    @Body() dto: UpdatePasswordDto,
-  ): Promise<void> {
-    return this.usersService.changePassword(id, dto);
-  }
-
+  @Roles(UserRole.Admin)
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Soft-delete a user' })
+  @ApiOperation({ summary: 'Remove a user' })
   @ApiNoContentResponse({ description: 'User removed' })
   remove(@Param('id', ParseObjectIdPipe) id: Types.ObjectId): Promise<void> {
     return this.usersService.remove(id);
+  }
+
+  /** Posts are public content: any signed-in user may read them. */
+  @Get(':id/posts')
+  @ApiOperation({ summary: "Fetch a user's posts through a single $lookup" })
+  @ApiOkResponse({ type: UserPostsDto })
+  @ApiNotFoundResponse({ description: 'User does not exist' })
+  findPosts(
+    @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
+    @Query() query: PaginationQueryDto,
+  ): Promise<UserPostsDto> {
+    return this.usersService.findPosts(id, query);
   }
 }

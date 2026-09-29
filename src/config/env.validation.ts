@@ -1,9 +1,11 @@
 import { plainToInstance, Transform } from 'class-transformer';
 import {
   IsBoolean,
+  IsEmail,
   IsEnum,
   IsInt,
   IsNotEmpty,
+  IsOptional,
   IsString,
   IsUrl,
   Max,
@@ -13,6 +15,7 @@ import {
 } from 'class-validator';
 
 import { toBoolean, toInt } from '../common/transformers';
+import { IsDifferentFrom } from '../common/validators';
 
 export enum NodeEnv {
   Development = 'development',
@@ -82,6 +85,28 @@ export class EnvironmentVariables {
   @IsNotEmpty()
   JWT_EXPIRES_IN: string = '15m';
 
+  /** Must differ from JWT_SECRET so an access token can never be replayed as a refresh token. */
+  @IsString()
+  @MinLength(32, {
+    message: 'JWT_REFRESH_SECRET must be at least 32 characters',
+  })
+  @IsDifferentFrom('JWT_SECRET')
+  JWT_REFRESH_SECRET!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  JWT_REFRESH_EXPIRES_IN: string = '7d';
+
+  @Transform(toInt)
+  @IsInt()
+  @Min(1)
+  LOGIN_MAX_ATTEMPTS: number = 5;
+
+  @Transform(toInt)
+  @IsInt()
+  @Min(1000)
+  LOGIN_LOCK_MS: number = 900_000;
+
   @Transform(toInt)
   @IsInt()
   @Min(10)
@@ -97,6 +122,16 @@ export class EnvironmentVariables {
   @IsInt()
   @Min(1)
   THROTTLE_LIMIT: number = 100;
+
+  /** Set both to create the first administrator on boot; omit both to skip it. */
+  @IsEmail()
+  @IsOptional()
+  BOOTSTRAP_ADMIN_EMAIL?: string;
+
+  @IsString()
+  @MinLength(12)
+  @IsOptional()
+  BOOTSTRAP_ADMIN_PASSWORD?: string;
 }
 
 export function validateEnv(

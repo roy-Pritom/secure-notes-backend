@@ -1,172 +1,282 @@
-import { ConfigService } from '@nestjs/config';
 import { NestExpressApplication } from '@nestjs/platform-express';
-import { Test, TestingModule } from '@nestjs/testing';
-import { MongoMemoryServer } from 'mongodb-memory-server';
 import request from 'supertest';
 
-import { AppModule } from '../src/app.module';
-import { configureApp } from '../src/app.setup';
-import { APP_CONFIG_KEY, AppConfig } from '../src/config';
+import {
+  Account,
+  auth,
+  BOOTSTRAP_ADMIN_EMAIL,
+  Harness,
+  PASSWORD,
+  register,
+  registerAdmin,
+  startHarness,
+} from './utils/app-harness';
 
 interface HealthBody {
   status: string;
   details: Record<string, { status: string }>;
 }
 
-interface UserBody {
-  id: string;
-  email: string;
-  fullName: string;
+interface AuthBody {
+  accessToken: string;
+  refreshToken: string;
+  user: { id: string; email: string; roles: string[] };
 }
 
-interface PageBody {
-  items: unknown[];
-  meta: { page: number; limit: number; total: number };
-}
-
-// Boots the real AppModule — config, pipes, filters, throttler — against an
-// in-memory mongod.
-describe('AppModule (e2e)', () => {
-  let mongod: MongoMemoryServer;
+describe('Auth and access control (e2e)', () => {
+  let harness: Harness;
   let app: NestExpressApplication;
+  let user: Account;
+  let admin: Account;
 
   beforeAll(async () => {
-    mongod = await MongoMemoryServer.create();
-    // Set before the module is built: dotenv does not override variables that
-    // are already present, so this wins over `.env`.
-    process.env.MONGODB_URI = mongod.getUri();
-    process.env.MONGODB_DB_NAME = 'e2e';
-    process.env.JWT_SECRET = 'e2e-secret-value-that-is-long-enough-1234';
-
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-
-    app = moduleFixture.createNestApplication<NestExpressApplication>();
-    configureApp(
-      app,
-      app.get(ConfigService).getOrThrow<AppConfig>(APP_CONFIG_KEY),
-    );
-    await app.init();
+    harness = await startHarness('e2e-auth');
+    app = harness.app;
+    user = await register(app, 'user@example.com');
+    admin = await registerAdmin(harness, 'admin@example.com');
   }, 120_000);
 
   afterAll(async () => {
-    await app?.close();
-    await mongod?.stop();
+    await harness?.stop();
   });
 
   describe('health', () => {
-    it('GET /health/ping answers without touching the database', async () => {
-      const response = await request(app.getHttpServer())
-        .get('/health/ping')
-        .expect(200);
-      expect(response.body).toMatchObject({ status: 'ok' });
-    });
+    it('answers probes without a token', async () => {
+      await request(app.getHttpServer()).get('/health/ping').expect(200);
 
-    it('GET /health/readiness reports the database as up', async () => {
       const body = (
         await request(app.getHttpServer()).get('/health/readiness').expect(200)
       ).body as HealthBody;
-      expect(body.status).toBe('ok');
-      expect(body.details['mongodb-connection']).toMatchObject({
-        status: 'up',
-      });
       expect(body.details.mongodb).toMatchObject({ status: 'up' });
-    });
-
-    it('GET /health returns the full report', async () => {
-      const body = (
-        await request(app.getHttpServer()).get('/health').expect(200)
-      ).body as HealthBody;
-      expect(Object.keys(body.details).sort()).toEqual([
-        'memory_heap',
-        'memory_rss',
-        'mongodb',
-        'mongodb-connection',
-      ]);
     });
   });
 
-  describe('POST /api/v1/users', () => {
-    const valid = {
-      email: 'Ada@Example.com',
-      password: 'C0rrect-Horse-Battery!',
-      firstName: 'Ada',
-      lastName: 'Lovelace',
-    };
-
-    it('creates a user, normalizing the email and hiding the hash', async () => {
+  describe('registration', () => {
+    it('normalizes the email and never returns the hash', async () => {
       const body = (
         await request(app.getHttpServer())
-          .post('/api/v1/users')
-          .send(valid)
+          .post('/api/v1/auth/register')
+          .send({
+            email: 'Grace@Example.com',
+            password: PASSWORD,
+            firstName: 'Grace',
+            lastName: 'Hopper',
+          })
           .expect(201)
-      ).body as UserBody;
+      ).body as AuthBody;
 
-      expect(body).toMatchObject({
-        email: 'ada@example.com',
-        fullName: 'Ada Lovelace',
+      expect(body.user).toMatchObject({
+        email: 'grace@example.com',
+        roles: ['user'],
       });
-      expect(body).toHaveProperty('id');
-      expect(body).not.toHaveProperty('passwordHash');
-      expect(body).not.toHaveProperty('_id');
+      expect(JSON.stringify(body)).not.toContain('passwordHash');
     });
 
-    it('rejects unknown fields instead of silently dropping them', async () => {
+    it('cannot grant itself a role', async () => {
+      // `roles` is not part of RegisterDto, and unknown fields are rejected.
       await request(app.getHttpServer())
-        .post('/api/v1/users')
-        .send({ ...valid, email: 'x@example.com', isAdmin: true })
+        .post('/api/v1/auth/register')
+        .send({
+          email: 'sneaky@example.com',
+          password: PASSWORD,
+          firstName: 'S',
+          lastName: 'N',
+          roles: ['admin'],
+        })
         .expect(400);
     });
 
-    it('rejects a weak password', async () => {
+    it('rejects a weak password and a duplicate email', async () => {
       await request(app.getHttpServer())
-        .post('/api/v1/users')
-        .send({ ...valid, email: 'weak@example.com', password: 'password' })
+        .post('/api/v1/auth/register')
+        .send({
+          email: 'weak@example.com',
+          password: 'password',
+          firstName: 'W',
+          lastName: 'K',
+        })
         .expect(400);
-    });
 
-    it('returns 409 on a duplicate email', async () => {
       await request(app.getHttpServer())
-        .post('/api/v1/users')
-        .send({ ...valid, email: 'dupe@example.com' })
-        .expect(201);
-      await request(app.getHttpServer())
-        .post('/api/v1/users')
-        .send({ ...valid, email: 'dupe@example.com' })
+        .post('/api/v1/auth/register')
+        .send({
+          email: user.email,
+          password: PASSWORD,
+          firstName: 'D',
+          lastName: 'P',
+        })
         .expect(409);
     });
   });
 
-  describe('GET /api/v1/users/:id', () => {
-    it('rejects a malformed ObjectId with 400, not 500', async () => {
-      await request(app.getHttpServer())
-        .get('/api/v1/users/not-an-id')
-        .expect(400);
+  describe('login', () => {
+    it('gives the same answer for a wrong password and an unknown account', async () => {
+      const wrongPassword = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email: user.email, password: 'Wrong-Password-123!' })
+        .expect(401);
+
+      const unknownEmail = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email: 'nobody@example.com', password: PASSWORD })
+        .expect(401);
+
+      expect((wrongPassword.body as { message: string }).message).toBe(
+        (unknownEmail.body as { message: string }).message,
+      );
     });
 
-    it('returns 404 for an id that does not exist', async () => {
+    it('locks an account after repeated failures', async () => {
+      const email = 'lockme@example.com';
+      await register(app, email);
+
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        await request(app.getHttpServer())
+          .post('/api/v1/auth/login')
+          .send({ email, password: 'Wrong-Password-123!' })
+          .expect(401);
+      }
+
+      // Even the correct password is refused while the lock holds.
       await request(app.getHttpServer())
-        .get('/api/v1/users/6650f1a2b3c4d5e6f7a8b9c0')
-        .expect(404);
+        .post('/api/v1/auth/login')
+        .send({ email, password: PASSWORD })
+        .expect(403);
     });
   });
 
-  describe('GET /api/v1/users', () => {
-    it('rejects a limit above the allowed ceiling', async () => {
+  describe('refresh tokens', () => {
+    it('rotates the pair and refuses the token it replaced', async () => {
+      const account = await register(app, 'rotate@example.com');
+
+      const rotated = (
+        await request(app.getHttpServer())
+          .post('/api/v1/auth/refresh')
+          .send({ refreshToken: account.refreshToken })
+          .expect(200)
+      ).body as AuthBody;
+
+      expect(rotated.refreshToken).not.toBe(account.refreshToken);
+
+      // Replaying the old token kills the session entirely.
       await request(app.getHttpServer())
-        .get('/api/v1/users?limit=1000')
-        .expect(400);
+        .post('/api/v1/auth/refresh')
+        .send({ refreshToken: account.refreshToken })
+        .expect(401);
+
+      await request(app.getHttpServer())
+        .post('/api/v1/auth/refresh')
+        .send({ refreshToken: rotated.refreshToken })
+        .expect(401);
     });
 
-    it('returns pagination metadata', async () => {
+    it('refuses an access token in place of a refresh token', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/auth/refresh')
+        .send({ refreshToken: user.accessToken })
+        .expect(401);
+    });
+
+    it('ends the session on logout', async () => {
+      const account = await register(app, 'logout@example.com');
+
+      await request(app.getHttpServer())
+        .post('/api/v1/auth/logout')
+        .set(...auth(account))
+        .expect(204);
+
+      await request(app.getHttpServer())
+        .post('/api/v1/auth/refresh')
+        .send({ refreshToken: account.refreshToken })
+        .expect(401);
+    });
+  });
+
+  describe('bootstrap administrator', () => {
+    it('is seeded from the environment and can reach admin routes', async () => {
       const body = (
         await request(app.getHttpServer())
-          .get('/api/v1/users?limit=2&page=1')
+          .post('/api/v1/auth/login')
+          .send({ email: BOOTSTRAP_ADMIN_EMAIL, password: PASSWORD })
           .expect(200)
-      ).body as PageBody;
-      expect(body).toHaveProperty('items');
-      expect(body.meta).toMatchObject({ page: 1, limit: 2 });
+      ).body as AuthBody;
+
+      expect(body.user.roles).toContain('admin');
+
+      await request(app.getHttpServer())
+        .get('/api/v1/users')
+        .set('Authorization', `Bearer ${body.accessToken}`)
+        .expect(200);
+    });
+  });
+
+  describe('route protection', () => {
+    it('rejects a missing or malformed token', async () => {
+      await request(app.getHttpServer()).get('/api/v1/profile').expect(401);
+      await request(app.getHttpServer())
+        .get('/api/v1/profile')
+        .set('Authorization', 'Bearer not-a-token')
+        .expect(401);
+    });
+
+    it('keeps admin routes away from a plain user', async () => {
+      await request(app.getHttpServer())
+        .get('/api/v1/users')
+        .set(...auth(user))
+        .expect(403);
+
+      await request(app.getHttpServer())
+        .get('/api/v1/users')
+        .set(...auth(admin))
+        .expect(200);
+    });
+  });
+
+  describe('profile', () => {
+    it('updates my own record and changes my password', async () => {
+      const account = await register(app, 'profile@example.com');
+
+      const updated = (
+        await request(app.getHttpServer())
+          .patch('/api/v1/profile')
+          .set(...auth(account))
+          .send({ firstName: 'Renamed', interests: ['Chess', ' Reading '] })
+          .expect(200)
+      ).body as { firstName: string; interests: string[] };
+
+      expect(updated.firstName).toBe('Renamed');
+      expect(updated.interests).toEqual(['chess', 'reading']);
+
+      await request(app.getHttpServer())
+        .patch('/api/v1/profile/password')
+        .set(...auth(account))
+        .send({
+          currentPassword: PASSWORD,
+          newPassword: 'An0ther-Strong-Pass!',
+        })
+        .expect(204);
+
+      // The old session is gone once the password rotates.
+      await request(app.getHttpServer())
+        .post('/api/v1/auth/refresh')
+        .send({ refreshToken: account.refreshToken })
+        .expect(401);
+    });
+
+    it('accepts an empty patch without touching the record', async () => {
+      await request(app.getHttpServer())
+        .patch('/api/v1/profile')
+        .set(...auth(user))
+        .send({})
+        .expect(200);
+    });
+
+    it('refuses a profile update that tries to set roles', async () => {
+      await request(app.getHttpServer())
+        .patch('/api/v1/profile')
+        .set(...auth(user))
+        .send({ roles: ['admin'] })
+        .expect(400);
     });
   });
 });

@@ -1,1 +1,1 @@
-export { escapeRegExp } from './escape-regexp';
+export { hashToken, tokenMatches } from './token-hash';

@@ -1,6 +1,7 @@
 export type {
-  LeanUser,
+  AggregatedPage,
   CreateUserData,
+  InterestGroupsResult,
   UserFilter,
-  AuthenticatableUser,
+  UserPostsResult,
 } from './user.types';

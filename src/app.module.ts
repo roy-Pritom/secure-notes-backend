@@ -8,6 +8,9 @@ import { AppValidationPipe } from './common/pipes/app-validation.pipe';
 import { ConfigModule, SECURITY_CONFIG_KEY, SecurityConfig } from './config';
 import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { NotesModule } from './modules/notes/notes.module';
+import { PostsModule } from './modules/posts/posts.module';
 import { UsersModule } from './modules/users/users.module';
 
 @Module({
@@ -30,7 +33,10 @@ import { UsersModule } from './modules/users/users.module';
     }),
 
     HealthModule,
+    AuthModule,
     UsersModule,
+    NotesModule,
+    PostsModule,
   ],
   providers: [
     // Registered as providers so they take part in DI and stay active in

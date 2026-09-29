@@ -34,3 +34,13 @@ export const toBoolean = ({ value }: TransformFnParams): unknown => {
   if (raw === 'false') return false;
   return raw;
 };
+
+/** Tag lists are stored lowercase and trimmed so grouping is exact. */
+export const normalizeTags = ({ value }: TransformFnParams): unknown => {
+  const raw: unknown = value;
+  return Array.isArray(raw)
+    ? raw.map((tag: unknown) =>
+        typeof tag === 'string' ? tag.trim().toLowerCase() : tag,
+      )
+    : raw;
+};

@@ -1,11 +1,8 @@
-import { FilterQuery, Types } from 'mongoose';
+import { FilterQuery } from 'mongoose';
 
+import { AuthoredPostDto } from '../dto/user-posts.dto';
+import { InterestGroupDto, InterestMemberDto } from '../dto/interest-group.dto';
 import { User } from '../schemas/user.schema';
-
-/** A user as returned by `.lean()` — plain data, no document methods. */
-export interface LeanUser extends Omit<User, '_id'> {
-  _id: Types.ObjectId;
-}
 
 /** Fields the service is allowed to write when creating a user. */
 export interface CreateUserData {
@@ -13,15 +10,20 @@ export interface CreateUserData {
   passwordHash: string;
   firstName: string;
   lastName: string;
+  interests?: string[];
   roles?: User['roles'];
 }
 
 export type UserFilter = FilterQuery<User>;
 
-/** Narrow view for the auth layer; never widen this to the whole document. */
-export interface AuthenticatableUser {
-  id: string;
-  email: string;
-  roles: User['roles'];
-  status: User['status'];
+/** Shape returned by a `$facet` tail: one page plus the unpaged total. */
+export interface AggregatedPage<T> {
+  items: T[];
+  total: number;
+}
+
+export type InterestGroupsResult = AggregatedPage<InterestGroupDto>;
+
+export interface UserPostsResult extends AggregatedPage<AuthoredPostDto> {
+  author: InterestMemberDto;
 }

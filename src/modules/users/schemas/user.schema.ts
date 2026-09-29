@@ -9,8 +9,11 @@ import { UserRole, UserStatus } from '../enums';
 
 export const USER_COLLECTION = 'users';
 
-const MAX_NAME_LENGTH = 80;
-const MAX_EMAIL_LENGTH = 254; // RFC 5321
+export const MAX_NAME_LENGTH = 80;
+export const MAX_EMAIL_LENGTH = 254; // RFC 5321
+export const MAX_INTERESTS = 20;
+export const MAX_INTEREST_LENGTH = 40;
+
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 @Schema({
@@ -21,8 +24,6 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   minimize: false,
 })
 export class User extends BaseSchema {
-  // Uniqueness comes from the partial index below, so a soft-deleted row does
-  // not permanently reserve an address.
   @ApiProperty({ example: 'ada@example.com', maxLength: MAX_EMAIL_LENGTH })
   @Prop({
     type: String,
@@ -62,22 +63,26 @@ export class User extends BaseSchema {
     type: [String],
     enum: Object.values(UserRole),
     default: [UserRole.User],
-    index: true,
   })
   roles!: UserRole[];
 
-  @ApiProperty({ enum: UserStatus, default: UserStatus.Pending })
+  @ApiProperty({ enum: UserStatus, default: UserStatus.Active })
   @Prop({
     type: String,
     enum: Object.values(UserStatus),
-    default: UserStatus.Pending,
-    index: true,
+    default: UserStatus.Active,
   })
   status!: UserStatus;
 
-  @ApiProperty({ type: Date, nullable: true })
-  @Prop({ type: Date, default: null })
-  emailVerifiedAt!: Date | null;
+  /** Profile tags such as `['chess', 'reading']`, grouped by the interests view. */
+  @ApiProperty({ example: ['chess', 'reading'], isArray: true, type: String })
+  @Prop({
+    type: [String],
+    default: [],
+    trim: true,
+    lowercase: true,
+  })
+  interests!: string[];
 
   @ApiProperty({ type: Date, nullable: true })
   @Prop({ type: Date, default: null })
@@ -91,7 +96,7 @@ export class User extends BaseSchema {
   @Prop({ type: Date, default: null, select: false })
   lockedUntil!: Date | null;
 
-  /** Hash of the current refresh token, so a stolen DB dump is not a session. */
+  /** Hash of the active refresh token, so a stolen DB dump is not a session. */
   @ApiHideProperty()
   @Prop({ type: String, default: null, select: false })
   refreshTokenHash!: string | null;
@@ -108,26 +113,36 @@ export type UserModel = Model<UserDocument>;
 
 export const UserSchema = SchemaFactory.createForClass(User);
 
-// Unique email among live users only: a soft-deleted account frees its address.
+/*
+ * Indexes — one per access path, nothing speculative.
+ *
+ * 1. uniq_active_email      login and registration uniqueness
+ * 2. active_users_by_created admin user listing (paginated, newest first)
+ * 3. active_users_by_interest the "users grouped by interests" aggregation
+ *
+ * Reads of a single user go through `_id`, which MongoDB already indexes.
+ */
+
+// Unique among live users only, so a soft-deleted account frees its address.
 UserSchema.index(
   { email: 1 },
   {
     unique: true,
     partialFilterExpression: { deletedAt: null },
-    name: 'uniq_email_active',
+    name: 'uniq_active_email',
   },
 );
 
-// Default listing: live users, newest first.
 UserSchema.index(
   { deletedAt: 1, createdAt: -1 },
-  { name: 'list_active_by_created' },
+  { name: 'active_users_by_created' },
 );
 
-// Filtering that listing by status and role.
+// Multikey: serves the `$match` + `$unwind`/`$group` on interests, and the
+// optional single-interest filter on that view.
 UserSchema.index(
-  { status: 1, roles: 1, deletedAt: 1 },
-  { name: 'filter_status_roles' },
+  { deletedAt: 1, interests: 1 },
+  { name: 'active_users_by_interest' },
 );
 
 UserSchema.virtual('fullName').get(function (this: UserDocument): string {

@@ -8,6 +8,7 @@ import {
   MongooseHealthIndicator,
 } from '@nestjs/terminus';
 
+import { Public } from '../modules/auth/decorators';
 import { MongoConnectionIndicator } from './indicators/mongo-connection.indicator';
 
 const HEAP_LIMIT_BYTES = 300 * 1024 * 1024;
@@ -15,6 +16,8 @@ const RSS_LIMIT_BYTES = 512 * 1024 * 1024;
 const DB_PING_TIMEOUT_MS = 1500;
 
 @ApiTags('health')
+// Probes must answer before anyone has a token.
+@Public()
 // Version-neutral: versioning would otherwise move the probes to `/v1/health`
 // and silently break orchestrator health checks.
 @Controller({ path: 'health', version: VERSION_NEUTRAL })

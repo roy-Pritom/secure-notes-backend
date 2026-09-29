@@ -1,17 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import {
-  ClientSession,
-  ProjectionType,
-  QueryOptions,
-  Types,
-  UpdateQuery,
-} from 'mongoose';
+import { ProjectionType, QueryOptions, Types, UpdateQuery } from 'mongoose';
 
-import { escapeRegExp } from '../../common/utils';
-import { QueryUsersDto } from './dto';
+import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
+import { interestGroupsPipeline, userPostsPipeline } from './aggregations';
+import { QueryInterestsDto } from './dto';
 import { User, type UserDocument, type UserModel } from './schemas/user.schema';
-import { CreateUserData, UserFilter } from './types';
+import {
+  CreateUserData,
+  InterestGroupsResult,
+  UserFilter,
+  UserPostsResult,
+} from './types';
 
 /**
  * The only place that talks to the `users` collection, so every query
@@ -26,12 +26,8 @@ export class UsersRepository {
     return { ...filter, deletedAt: null };
   }
 
-  async create(
-    data: CreateUserData,
-    session?: ClientSession,
-  ): Promise<UserDocument> {
-    const [created] = await this.userModel.create([data], { session });
-    return created;
+  async create(data: CreateUserData): Promise<UserDocument> {
+    return this.userModel.create(data);
   }
 
   async findById(
@@ -62,21 +58,18 @@ export class UsersRepository {
     return found !== null;
   }
 
+  /** Served by `active_users_by_created`. */
   async findPaginated(
-    query: QueryUsersDto,
+    query: PaginationQueryDto,
   ): Promise<{ items: UserDocument[]; total: number }> {
-    const filter = this.buildFilter(query);
-    const sort: Record<string, 1 | -1> = {
-      [query.sortBy]: query.sortOrder === 'asc' ? 1 : -1,
-    };
+    const filter = this.live();
 
     const [items, total] = await Promise.all([
       this.userModel
         .find(filter)
-        .sort(sort)
+        .sort({ createdAt: query.createdAtSort })
         .skip(query.skip)
         .limit(query.limit)
-        .collation({ locale: 'en', strength: 2 }) // case-insensitive, index-friendly
         .exec(),
       this.userModel.countDocuments(filter).exec(),
     ]);
@@ -100,29 +93,30 @@ export class UsersRepository {
 
   /** The row stays for audit, but its email address is freed. */
   async softDeleteById(id: Types.ObjectId): Promise<UserDocument | null> {
-    return this.updateById(id, { $set: { deletedAt: new Date() } });
+    return this.updateById(id, {
+      // Ending the session is part of deletion, not a separate step.
+      $set: { deletedAt: new Date(), refreshTokenHash: null },
+    });
   }
 
-  private buildFilter(query: QueryUsersDto): UserFilter {
-    const filter: UserFilter = this.live();
+  /** Scenario 1: users grouped by interest, in a single aggregation call. */
+  async groupByInterests(
+    query: QueryInterestsDto,
+  ): Promise<InterestGroupsResult> {
+    const [result] = await this.userModel.aggregate<InterestGroupsResult>(
+      interestGroupsPipeline(query.skip, query.limit, query.interest),
+    );
+    return result ?? { items: [], total: 0 };
+  }
 
-    if (query.status) {
-      filter.status = query.status;
-    }
-
-    if (query.role) {
-      filter.roles = query.role;
-    }
-
-    if (query.search) {
-      const term = escapeRegExp(query.search);
-      filter.$or = [
-        { email: { $regex: term, $options: 'i' } },
-        { firstName: { $regex: term, $options: 'i' } },
-        { lastName: { $regex: term, $options: 'i' } },
-      ];
-    }
-
-    return filter;
+  /** Scenario 2: one user joined to their posts through a single `$lookup`. */
+  async findWithPosts(
+    userId: Types.ObjectId,
+    query: PaginationQueryDto,
+  ): Promise<UserPostsResult | null> {
+    const [result] = await this.userModel.aggregate<UserPostsResult>(
+      userPostsPipeline(userId, query.skip, query.limit),
+    );
+    return result ?? null;
   }
 }

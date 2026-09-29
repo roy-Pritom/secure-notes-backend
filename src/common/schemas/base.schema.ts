@@ -2,8 +2,8 @@ import { Prop } from '@nestjs/mongoose';
 import { ApiProperty } from '@nestjs/swagger';
 import { Types } from 'mongoose';
 
-/** Fields every document carries. Extend this instead of re-declaring them. */
-export abstract class BaseSchema {
+/** Identity and audit fields every document carries. */
+export abstract class TimestampedSchema {
   @ApiProperty({
     example: '6650f1a2b3c4d5e6f7a8b9c0',
     description: 'Document identifier',
@@ -16,8 +16,14 @@ export abstract class BaseSchema {
 
   @ApiProperty({ type: Date })
   readonly updatedAt!: Date;
+}
 
-  /** Soft delete marker. Queries must filter on `deletedAt: null`. */
-  @Prop({ type: Date, default: null, index: true })
+/** Adds soft deletion. Queries on these collections filter on `deletedAt: null`. */
+export abstract class BaseSchema extends TimestampedSchema {
+  /**
+   * Soft delete marker. Never indexed on its own — it is the leading field of
+   * the compound listing indexes instead.
+   */
+  @Prop({ type: Date, default: null })
   deletedAt!: Date | null;
 }

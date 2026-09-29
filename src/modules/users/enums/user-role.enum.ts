@@ -1,5 +1,5 @@
 export enum UserRole {
   User = 'user',
-  Editor = 'editor',
+  /** Inherits every user capability and additionally manages users and notes. */
   Admin = 'admin',
 }

@@ -41,9 +41,8 @@ export class UserResponseDto {
   status!: UserStatus;
 
   @Expose()
-  @Type(() => Date)
-  @ApiProperty({ type: Date, nullable: true })
-  emailVerifiedAt!: Date | null;
+  @ApiProperty({ example: ['chess', 'reading'], type: [String] })
+  interests!: string[];
 
   @Expose()
   @Type(() => Date)
@@ -69,7 +68,7 @@ export class UserResponseDto {
     dto.fullName = `${user.firstName} ${user.lastName}`.trim();
     dto.roles = user.roles;
     dto.status = user.status;
-    dto.emailVerifiedAt = user.emailVerifiedAt;
+    dto.interests = user.interests;
     dto.lastLoginAt = user.lastLoginAt;
     dto.createdAt = user.createdAt;
     dto.updatedAt = user.updatedAt;
