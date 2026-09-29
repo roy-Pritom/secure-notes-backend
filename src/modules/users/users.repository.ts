@@ -91,12 +91,12 @@ export class UsersRepository {
       .exec();
   }
 
-  /** The row stays for audit, but its email address is freed. */
+  /**
+   * The row stays for audit, but its email address is freed. Sessions are
+   * revoked by `UsersService`, which owns the `refresh_tokens` collaborator.
+   */
   async softDeleteById(id: Types.ObjectId): Promise<UserDocument | null> {
-    return this.updateById(id, {
-      // Ending the session is part of deletion, not a separate step.
-      $set: { deletedAt: new Date(), refreshTokenHash: null },
-    });
+    return this.updateById(id, { $set: { deletedAt: new Date() } });
   }
 
   /** Scenario 1: users grouped by interest, in a single aggregation call. */

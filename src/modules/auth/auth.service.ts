@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { Types } from 'mongoose';
 
-import { tokenMatches } from '../../common/utils';
+import { RefreshTokensService } from '../refresh-tokens/refresh-tokens.service';
 import { UserResponseDto } from '../users/dto';
 import { UserStatus } from '../users/enums';
 import { UsersService } from '../users/users.service';
@@ -17,12 +17,16 @@ import { JwtPayload } from './types';
 /** One message for every failed login: never reveal which half was wrong. */
 const INVALID_CREDENTIALS = 'Invalid email or password';
 
+/** Likewise for refresh: revoked, unknown and expired are indistinguishable. */
+const SESSION_ENDED = 'Session is no longer active';
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
 
   constructor(
     private readonly usersService: UsersService,
+    private readonly refreshTokensService: RefreshTokensService,
     private readonly tokenService: TokenService,
   ) {}
 
@@ -56,10 +60,15 @@ export class AuthService {
       throw new ForbiddenException('Account is suspended');
     }
 
+    // Existing sessions survive: a sign-in on a second device does not evict
+    // the first, which is the point of a row per token.
     return this.grant(user._id, UserResponseDto.fromEntity(user));
   }
 
-  /** Rotates the pair: a refresh token is single-use, so a replay is detectable. */
+  /**
+   * Rotates the pair. A refresh token is single-use, so presenting one twice
+   * is either a replay or a theft, and costs the user every live session.
+   */
   async refresh(refreshToken: string): Promise<AuthResponseDto> {
     let payload: JwtPayload;
     try {
@@ -69,25 +78,46 @@ export class AuthService {
     }
 
     const userId = new Types.ObjectId(payload.sub);
-    const user = await this.usersService.findWithActiveSession(userId);
+    const session = await this.refreshTokensService.findByToken(refreshToken);
 
-    if (!user?.refreshTokenHash) {
-      throw new UnauthorizedException('Session is no longer active');
+    // Signed by us, but no row: the session was revoked in bulk and its row
+    // has since aged out, or the token was never ours to begin with.
+    if (!session || !session.user.equals(userId)) {
+      throw new UnauthorizedException(SESSION_ENDED);
     }
 
-    if (!tokenMatches(refreshToken, user.refreshTokenHash)) {
-      // A token that verified but is not the stored one was replayed or
-      // stolen; drop the session entirely.
-      await this.usersService.clearSession(userId);
+    if (session.revokedAt !== null) {
+      // A spent row presented again: whoever holds the successor may not be
+      // the person who holds this one, so the whole family goes.
+      await this.refreshTokensService.revokeAllForUser(userId);
       this.logger.warn(`Refresh token reuse detected for user ${payload.sub}`);
-      throw new UnauthorizedException('Session is no longer active');
+      throw new UnauthorizedException(SESSION_ENDED);
+    }
+
+    if (!session.isActive()) {
+      throw new UnauthorizedException(SESSION_ENDED);
+    }
+
+    const user = await this.usersService.findActiveById(userId);
+    if (!user || user.status === UserStatus.Suspended) {
+      await this.refreshTokensService.revokeAllForUser(userId);
+      throw new UnauthorizedException(SESSION_ENDED);
+    }
+
+    // Spend the row before minting its replacement. The compare-and-set means
+    // two concurrent rotations of the same token cannot both succeed.
+    if (!(await this.refreshTokensService.consume(session._id))) {
+      await this.refreshTokensService.revokeAllForUser(userId);
+      this.logger.warn(`Concurrent refresh rotation for user ${payload.sub}`);
+      throw new UnauthorizedException(SESSION_ENDED);
     }
 
     return this.grant(userId, UserResponseDto.fromEntity(user));
   }
 
+  /** Signs out everywhere: the access token names the user, not one session. */
   async logout(userId: Types.ObjectId): Promise<void> {
-    await this.usersService.clearSession(userId);
+    await this.refreshTokensService.revokeAllForUser(userId);
   }
 
   private async grant(
@@ -100,7 +130,13 @@ export class AuthService {
       roles: user.roles,
     });
 
-    await this.usersService.startSession(userId, tokens.refreshToken);
+    await this.refreshTokensService.issue(
+      userId,
+      tokens.refreshToken,
+      this.tokenService.expiresAt(tokens.refreshToken),
+    );
+    await this.usersService.markLoginSucceeded(userId);
+
     return AuthResponseDto.build(tokens, user);
   }
 }

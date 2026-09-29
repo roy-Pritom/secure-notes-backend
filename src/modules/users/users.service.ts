@@ -11,8 +11,8 @@ import { Types } from 'mongoose';
 
 import { PaginatedResponseDto } from '../../common/dto/paginated-response.dto';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
-import { hashToken } from '../../common/utils';
 import { SECURITY_CONFIG_KEY, SecurityConfig } from '../../config';
+import { RefreshTokensService } from '../refresh-tokens/refresh-tokens.service';
 import {
   AdminUpdateUserDto,
   CreateUserDto,
@@ -37,6 +37,7 @@ export class UsersService {
 
   constructor(
     private readonly usersRepository: UsersRepository,
+    private readonly refreshTokensService: RefreshTokensService,
     configService: ConfigService,
   ) {
     this.security =
@@ -104,10 +105,14 @@ export class UsersService {
       elevated.roles !== undefined || elevated.status !== undefined;
 
     const updated = await this.usersRepository.updateById(id, {
-      $set: { ...dto, ...(endSession ? { refreshTokenHash: null } : {}) },
+      $set: { ...dto },
     });
     if (!updated) {
       throw notFound(id);
+    }
+
+    if (endSession) {
+      await this.refreshTokensService.revokeAllForUser(id);
     }
     return UserResponseDto.fromEntity(updated);
   }
@@ -129,10 +134,9 @@ export class UsersService {
       dto.newPassword,
       this.security.bcryptSaltRounds,
     );
-    await this.usersRepository.updateById(id, {
-      // Rotating the password ends every other session.
-      $set: { passwordHash, refreshTokenHash: null },
-    });
+    await this.usersRepository.updateById(id, { $set: { passwordHash } });
+    // Rotating the password ends every session, on every device.
+    await this.refreshTokensService.revokeAllForUser(id);
 
     this.logger.log(`Password changed for user ${id.toHexString()}`);
   }
@@ -142,6 +146,8 @@ export class UsersService {
     if (!deleted) {
       throw notFound(id);
     }
+    // MongoDB has no cascade, so deletion revokes the user's sessions here.
+    await this.refreshTokensService.revokeAllForUser(id);
     this.logger.log(`Soft-deleted user ${id.toHexString()}`);
   }
 
@@ -178,8 +184,9 @@ export class UsersService {
     return this.usersRepository.findByEmail(email, true);
   }
 
-  findWithActiveSession(id: Types.ObjectId): Promise<UserDocument | null> {
-    return this.usersRepository.findById(id, '+refreshTokenHash');
+  /** A live (not soft-deleted) user, or `null`. */
+  findActiveById(id: Types.ObjectId): Promise<UserDocument | null> {
+    return this.usersRepository.findById(id);
   }
 
   /** Keeps a login attempt against an unknown email as slow as a real one. */
@@ -209,21 +216,17 @@ export class UsersService {
     }
   }
 
-  /** Stores the refresh token digest and clears the failed-login state. */
-  async startSession(id: Types.ObjectId, refreshToken: string): Promise<void> {
+  /**
+   * Stamps the login and clears the failed-attempt state. The session itself
+   * lives in `refresh_tokens`, so nothing about it is recorded here.
+   */
+  async markLoginSucceeded(id: Types.ObjectId): Promise<void> {
     await this.usersRepository.updateById(id, {
       $set: {
-        refreshTokenHash: hashToken(refreshToken),
         lastLoginAt: new Date(),
         failedLoginAttempts: 0,
         lockedUntil: null,
       },
-    });
-  }
-
-  async clearSession(id: Types.ObjectId): Promise<void> {
-    await this.usersRepository.updateById(id, {
-      $set: { refreshTokenHash: null },
     });
   }
 

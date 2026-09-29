@@ -218,6 +218,12 @@ describe('Aggregations (e2e)', () => {
         'own_notes_by_created',
       ]);
       expect(await names('posts')).toEqual(['_id_', 'posts_by_author_created']);
+      expect(await names('refresh_tokens')).toEqual([
+        '_id_',
+        'expired_sessions_ttl',
+        'uniq_refresh_token_hash',
+        'user_sessions_by_expiry',
+      ]);
     });
   });
 });

@@ -5,6 +5,8 @@ NestJS and MongoDB.
 
 - **Database** — MongoDB with Mongoose
 - **Authentication** — JWT access and refresh tokens, with rotation
+- **Sessions** — one `refresh_tokens` row per issued token, so a user can be signed
+  in on several devices and each session can be revoked on its own
 - **Passwords** — bcrypt, cost 12 by default
 - **Indexes** — every one declared with `schema.index(…)`, one per named query
 
@@ -107,7 +109,7 @@ bearer token on top of that unless marked public. Every list endpoint takes `pag
 | POST | `/auth/register` | public | Create an account and sign in |
 | POST | `/auth/login` | public | Exchange credentials for a token pair |
 | POST | `/auth/refresh` | public | Rotate an expiring token pair |
-| POST | `/auth/logout` | any | End the current session |
+| POST | `/auth/logout` | any | Revoke every session for the caller |
 | GET | `/profile` | any | My profile |
 | PATCH | `/profile` | any | Update my name or interests |
 | PATCH | `/profile/password` | any | Change my password |
@@ -132,7 +134,7 @@ probeable. Editing someone else's note — including as an admin — answers `40
 
 ## Indexing
 
-Six indexes across three collections, each tied to one access path. The full table,
+Nine indexes across four collections, each tied to one access path. The full table,
 with the reasoning for every index and for the ones deliberately left out, is on page
 two of [`docs/ERD.pdf`](docs/ERD.pdf).
 
@@ -144,6 +146,9 @@ two of [`docs/ERD.pdf`](docs/ERD.pdf).
 | notes | `own_notes_by_created` | `{ owner: 1, deletedAt: 1, createdAt: -1 }` |
 | notes | `all_notes_by_created` | `{ deletedAt: 1, createdAt: -1 }` |
 | posts | `posts_by_author_created` | `{ author: 1, createdAt: -1 }` |
+| refresh_tokens | `uniq_refresh_token_hash` | `{ tokenHash: 1 }` unique |
+| refresh_tokens | `user_sessions_by_expiry` | `{ user: 1, expiresAt: 1 }` |
+| refresh_tokens | `expired_sessions_ttl` | `{ expiresAt: 1 }` TTL, 24 h after expiry |
 
 Single-document reads go through `_id`, which MongoDB already indexes. The request
 surface is kept inside what these cover: there is no free-text search and no `sortBy`
@@ -187,11 +192,19 @@ ordering is read rather than computed.
 - **Tokens** — access and refresh are signed with *different* secrets, and the
   environment refuses to boot if they match. Each carries a `jti`, so two tokens
   minted in the same second are never byte-identical.
-- **Refresh rotation** — only the SHA-256 digest of the live refresh token is stored.
-  Replaying a spent token drops the whole session. bcrypt is not used here on purpose:
-  it truncates at 72 bytes and would compare only a JWT's near-identical header.
-- **Session invalidation** — changing a password, or an admin changing roles or
-  status, clears the stored digest and ends every other session.
+- **Refresh rotation** — each issued token gets a row in `refresh_tokens` holding
+  only its SHA-256 digest, so a database dump contains nothing replayable. bcrypt is
+  not used here on purpose: it truncates at 72 bytes and would compare only a JWT's
+  near-identical header. Refreshing spends the row (`revokedAt`) and writes a new one,
+  under a `revokedAt: null` compare-and-set, so two concurrent rotations of the same
+  token cannot both mint a pair.
+- **Reuse detection** — a spent row presented a second time means the token was
+  replayed or stolen, so every session that user holds is revoked, not just that one.
+  Revoked and unknown tokens return the same message.
+- **Session invalidation** — changing a password, or an admin changing roles, status,
+  or deleting the account, revokes every row for that user. MongoDB has no cascade,
+  so `UsersService` does it explicitly. Expired rows age out through a TTL index a day
+  after expiry, leaving a short audit window without unbounded growth.
 - **Brute force** — the account locks for 15 minutes after 5 failed logins, and the
   credential endpoints are rate limited well below the global ceiling. A login against
   an unknown address still runs a bcrypt comparison, so timing does not reveal whether

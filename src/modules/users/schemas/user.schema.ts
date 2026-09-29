@@ -95,11 +95,6 @@ export class User extends BaseSchema {
   @ApiHideProperty()
   @Prop({ type: Date, default: null, select: false })
   lockedUntil!: Date | null;
-
-  /** Hash of the active refresh token, so a stolen DB dump is not a session. */
-  @ApiHideProperty()
-  @Prop({ type: String, default: null, select: false })
-  refreshTokenHash!: string | null;
 }
 
 export interface UserMethods {
@@ -175,7 +170,6 @@ UserSchema.methods.hasRole = function (
 // reach a JSON response.
 applyDocumentSerialization(UserSchema, (_doc, ret) => {
   delete ret.passwordHash;
-  delete ret.refreshTokenHash;
   delete ret.failedLoginAttempts;
   delete ret.lockedUntil;
   return ret;

@@ -7,7 +7,7 @@ import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 import { SECURITY_CONFIG_KEY, SecurityConfig } from '../../config';
 import { JwtPayload, TokenPair } from './types';
 
-/** `@nestjs/jwt` types a lifetime more narrowly than the validated env string. */
+
 type Expiry = JwtSignOptions['expiresIn'];
 
 /** Signs and verifies the token pair. Access and refresh use separate secrets. */
@@ -24,9 +24,7 @@ export class TokenService {
   }
 
   async issuePair(payload: JwtPayload): Promise<TokenPair> {
-    // `jti` keeps every token unique. Without it two pairs minted in the same
-    // second would be byte-identical, and rotation could not invalidate the
-    // token it replaced.
+
     const sign = (secret: string, expiresIn: string): Promise<string> =>
       this.jwtService.signAsync(
         { ...payload, jti: randomUUID() },
@@ -41,7 +39,12 @@ export class TokenService {
     return { accessToken, refreshToken };
   }
 
-  /** Throws if the token is not a valid, unexpired refresh token. */
+  expiresAt(token: string): Date {
+    const { exp } = this.jwtService.decode<{ exp: number }>(token);
+    return new Date(exp * 1000);
+  }
+
+
   verifyRefreshToken(token: string): Promise<JwtPayload> {
     return this.jwtService.verifyAsync<JwtPayload>(token, {
       secret: this.security.jwtRefreshSecret,

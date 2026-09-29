@@ -70,8 +70,8 @@ export class AuthController {
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Invalidate the current session' })
-  @ApiNoContentResponse({ description: 'Session ended' })
+  @ApiOperation({ summary: 'Revoke every session for the caller' })
+  @ApiNoContentResponse({ description: 'All sessions ended' })
   logout(@CurrentUserId() userId: Types.ObjectId): Promise<void> {
     return this.authService.logout(userId);
   }
