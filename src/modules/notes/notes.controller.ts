@@ -24,16 +24,18 @@ import {
 import { Types } from 'mongoose';
 
 import { CurrentUser, CurrentUserId, Roles } from '../../common/decorators';
-import {
-  PaginatedResponseDto,
-  PaginationQueryDto,
-} from '../../common/pagination';
+import { PaginatedResponseDto } from '../../common/pagination';
 import { JwtAuthGuard, RolesGuard } from '../../common/guards';
 import { ParseObjectIdPipe } from '../../common/pipes/parse-object-id.pipe';
 import type { AuthenticatedUser } from '../../common/types';
 import { API_VERSION } from '../../utils/constant';
 import { UserRole } from '../users/enums';
-import { CreateNoteDto, NoteResponseDto, UpdateNoteDto } from './dto';
+import {
+  CreateNoteDto,
+  NoteResponseDto,
+  QueryNotesDto,
+  UpdateNoteDto,
+} from './dto';
 import { NotesService } from './notes.service';
 
 @ApiTags('notes')
@@ -54,10 +56,14 @@ export class NotesController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List my notes, newest first' })
+  @ApiOperation({
+    summary: 'List my notes — pinned first, then newest',
+    description:
+      'Archived notes are excluded unless `archived=true`. Optional `tag` and `pinned` filters narrow the page further.',
+  })
   findOwn(
     @CurrentUserId() userId: Types.ObjectId,
-    @Query() query: PaginationQueryDto,
+    @Query() query: QueryNotesDto,
   ): Promise<PaginatedResponseDto<NoteResponseDto>> {
     return this.notesService.findOwn(userId, query);
   }
@@ -68,7 +74,7 @@ export class NotesController {
   @ApiOperation({ summary: "List everyone's notes" })
   @ApiForbiddenResponse({ description: 'Requires the admin role' })
   findAll(
-    @Query() query: PaginationQueryDto,
+    @Query() query: QueryNotesDto,
   ): Promise<PaginatedResponseDto<NoteResponseDto>> {
     return this.notesService.findAll(query);
   }

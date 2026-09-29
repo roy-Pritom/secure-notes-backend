@@ -13,6 +13,8 @@ export const MAX_NAME_LENGTH = 80;
 export const MAX_EMAIL_LENGTH = 254; // RFC 5321
 export const MAX_INTERESTS = 20;
 export const MAX_INTEREST_LENGTH = 40;
+export const MAX_BIO_LENGTH = 500;
+export const MAX_AVATAR_URL_LENGTH = 512;
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -77,6 +79,32 @@ export class User extends BaseSchema {
   })
   status!: UserStatus;
 
+  @ApiProperty({
+    example: 'https://cdn.example.com/avatars/ada.png',
+    nullable: true,
+    maxLength: MAX_AVATAR_URL_LENGTH,
+  })
+  @Prop({
+    type: String,
+    default: null,
+    trim: true,
+    maxlength: MAX_AVATAR_URL_LENGTH,
+  })
+  avatarUrl!: string | null;
+
+  @ApiProperty({
+    example: 'Writes about endgames.',
+    nullable: true,
+    maxLength: MAX_BIO_LENGTH,
+  })
+  @Prop({
+    type: String,
+    default: null,
+    trim: true,
+    maxlength: MAX_BIO_LENGTH,
+  })
+  bio!: string | null;
+
   @ApiProperty({ example: ['chess', 'reading'], isArray: true, type: String })
   @Prop({
     type: [String],
@@ -89,6 +117,14 @@ export class User extends BaseSchema {
   @ApiProperty({ type: Date, nullable: true })
   @Prop({ type: Date, default: null })
   lastLoginAt!: Date | null;
+
+  /**
+   * Stamped at registration and on every change, so a client can show the
+   * age of a password and a future policy can expire one without a migration.
+   */
+  @ApiProperty({ type: Date })
+  @Prop({ type: Date, default: (): Date => new Date() })
+  passwordChangedAt!: Date;
 
   @ApiHideProperty()
   @Prop({ type: Number, default: 0, min: 0, select: false })

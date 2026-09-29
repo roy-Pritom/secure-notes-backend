@@ -56,7 +56,12 @@ export function interestGroupsPipeline(
         _id: '$interests',
         userCount: { $sum: 1 },
         users: {
-          $push: { id: '$_id', fullName: FULL_NAME, email: '$email' },
+          $push: {
+            id: '$_id',
+            fullName: FULL_NAME,
+            email: '$email',
+            avatarUrl: '$avatarUrl',
+          },
         },
       },
     },
@@ -103,6 +108,10 @@ export function userPostsPipeline(
                     id: '$_id',
                     title: 1,
                     body: 1,
+                    excerpt: 1,
+                    tags: 1,
+                    status: 1,
+                    publishedAt: 1,
                     createdAt: 1,
                   },
                 },
@@ -118,7 +127,12 @@ export function userPostsPipeline(
     {
       $project: {
         _id: 0,
-        author: { id: '$_id', fullName: FULL_NAME, email: '$email' },
+        author: {
+          id: '$_id',
+          fullName: FULL_NAME,
+          email: '$email',
+          avatarUrl: '$avatarUrl',
+        },
         items: '$posts.items',
         total: { $ifNull: [{ $arrayElemAt: ['$posts.meta.total', 0] }, 0] },
       },

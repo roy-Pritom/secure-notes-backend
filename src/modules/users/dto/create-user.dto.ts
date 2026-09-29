@@ -11,6 +11,7 @@ import {
   IsOptional,
   IsString,
   IsStrongPassword,
+  IsUrl,
   MaxLength,
   MinLength,
 } from 'class-validator';
@@ -22,6 +23,8 @@ import {
 } from '../../../common/transformers';
 import { UserRole } from '../enums';
 import {
+  MAX_AVATAR_URL_LENGTH,
+  MAX_BIO_LENGTH,
   MAX_EMAIL_LENGTH,
   MAX_INTEREST_LENGTH,
   MAX_INTERESTS,
@@ -73,6 +76,26 @@ export class CreateUserDto {
   @IsNotEmpty()
   @MaxLength(MAX_NAME_LENGTH)
   lastName!: string;
+
+  @ApiPropertyOptional({
+    example: 'https://cdn.example.com/avatars/ada.png',
+    maxLength: MAX_AVATAR_URL_LENGTH,
+  })
+  @Transform(trimString)
+  @IsUrl({ protocols: ['http', 'https'], require_protocol: true })
+  @MaxLength(MAX_AVATAR_URL_LENGTH)
+  @IsOptional()
+  avatarUrl?: string;
+
+  @ApiPropertyOptional({
+    example: 'Writes about endgames.',
+    maxLength: MAX_BIO_LENGTH,
+  })
+  @Transform(trimString)
+  @IsString()
+  @MaxLength(MAX_BIO_LENGTH)
+  @IsOptional()
+  bio?: string;
 
   @ApiPropertyOptional({ example: ['chess', 'reading'], type: [String] })
   @Transform(normalizeTags)

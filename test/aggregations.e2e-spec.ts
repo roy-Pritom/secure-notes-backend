@@ -216,6 +216,7 @@ describe('Aggregations (e2e)', () => {
         '_id_',
         'all_notes_by_created',
         'own_notes_by_created',
+        'own_notes_by_tag',
       ]);
       expect(await names('posts')).toEqual(['_id_', 'posts_by_author_created']);
       expect(await names('refresh_tokens')).toEqual([

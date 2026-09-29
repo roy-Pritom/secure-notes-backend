@@ -102,7 +102,8 @@ pnpm typecheck && pnpm lint && pnpm build
 All routes are versioned under `/api/v1`. Every route needs a valid `x-api-key`
 header once `API_KEYS` is set — the health probes are the only exception — and a
 bearer token on top of that unless marked public. Every list endpoint takes `page`,
-`limit` (≤ 100) and `sortOrder`.
+`limit` (≤ 100) and `sortOrder`. The two note listings take `tag`, `pinned` and
+`archived` on top of those.
 
 | Method | Path | Access | Purpose |
 | --- | --- | --- | --- |
@@ -111,10 +112,10 @@ bearer token on top of that unless marked public. Every list endpoint takes `pag
 | POST | `/auth/refresh` | public | Rotate an expiring token pair |
 | POST | `/auth/logout` | any | Revoke every session for the caller |
 | GET | `/profile` | any | My profile |
-| PATCH | `/profile` | any | Update my name or interests |
+| PATCH | `/profile` | any | Update my name, avatar, bio or interests |
 | PATCH | `/profile/password` | any | Change my password |
 | POST | `/notes` | any | Create a note |
-| GET | `/notes` | any | List my notes |
+| GET | `/notes` | any | List my notes — pinned first, then newest |
 | GET | `/notes/:id` | owner / admin | Read one note |
 | PATCH | `/notes/:id` | owner | Update a note |
 | DELETE | `/notes/:id` | owner | Delete a note |
@@ -132,9 +133,24 @@ bearer token on top of that unless marked public. Every list endpoint takes `pag
 A note that belongs to someone else answers `404`, not `403`: ownership must not be
 probeable. Editing someone else's note — including as an admin — answers `403`.
 
+### Fields beyond the essentials
+
+A note carries `tags` (up to 10, stored trimmed and lowercased so `?tag=Chess` and
+`?tag=chess` are one filter), `isPinned`, `isArchived` and a `color` drawn from a
+fixed palette. Pinned notes lead every listing; archived ones are kept but stay out
+of it until `archived=true` asks for them. A post carries `tags`, a `status` of
+`draft` or `published`, the `publishedAt` stamp that goes with it, and an `excerpt`
+cut from the body on a word boundary when the author does not write one. A user
+carries `avatarUrl`, `bio` and `passwordChangedAt` — stamped at registration and on
+every change, so a client can show the age of a password.
+
+Each of these is filterable, sortable or rendered somewhere: nothing is stored that
+no route reads. Deliberately absent are a note's collaborators and version history —
+sharing is out of scope for the brief, and neither is a single field.
+
 ## Indexing
 
-Nine indexes across four collections, each tied to one access path. The full table,
+Ten indexes across four collections, each tied to one access path. The full table,
 with the reasoning for every index and for the ones deliberately left out, is on page
 two of [`docs/ERD.pdf`](docs/ERD.pdf).
 
@@ -143,16 +159,25 @@ two of [`docs/ERD.pdf`](docs/ERD.pdf).
 | users | `uniq_active_email` | `{ email: 1 }` unique, partial on `isDeleted: false` |
 | users | `active_users_by_created` | `{ isDeleted: 1, createdAt: -1 }` |
 | users | `active_users_by_interest` | `{ isDeleted: 1, interests: 1 }` |
-| notes | `own_notes_by_created` | `{ owner: 1, isDeleted: 1, createdAt: -1 }` |
-| notes | `all_notes_by_created` | `{ isDeleted: 1, createdAt: -1 }` |
+| notes | `own_notes_by_created` | `{ owner: 1, isDeleted: 1, isArchived: 1, isPinned: -1, createdAt: -1 }` |
+| notes | `own_notes_by_tag` | `{ owner: 1, isDeleted: 1, tags: 1 }` |
+| notes | `all_notes_by_created` | `{ isDeleted: 1, isArchived: 1, isPinned: -1, createdAt: -1 }` |
 | posts | `posts_by_author_created` | `{ author: 1, isDeleted: 1, createdAt: -1 }` |
 | refresh_tokens | `uniq_refresh_token_hash` | `{ tokenHash: 1 }` unique |
 | refresh_tokens | `user_sessions_by_expiry` | `{ user: 1, expiresAt: 1 }` |
 | refresh_tokens | `expired_sessions_ttl` | `{ expiresAt: 1 }` TTL, 24 h after expiry |
 
+The two note listing indexes end in the sort keys they are read with — `isPinned`
+before `createdAt` — with the `isArchived` equality ahead of both, so a default page
+is an index seek rather than an in-memory sort. `?sortOrder=asc` is the one exception:
+it flips `createdAt` but not `isPinned`, which is neither the index order nor its
+exact reverse, so that page is sorted in memory. It is bounded by one owner's notes
+and a `limit` of 100, and it is the rarer request — a second index for it would cost
+more on every write than it saves on that read.
+
 Single-document reads go through `_id`, which MongoDB already indexes. The request
-surface is kept inside what these cover: there is no free-text search and no `sortBy`
-parameter, so no query can ask for an ordering no index provides. An e2e test asserts
+surface is otherwise kept inside what these indexes cover: there is no free-text
+search and no `sortBy` parameter. An e2e test asserts
 the deployed index set matches this list exactly.
 
 ## Aggregations

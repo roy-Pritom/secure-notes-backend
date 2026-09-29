@@ -1,3 +1,5 @@
+export type SortSpec = Record<string, 1 | -1>;
+
 export interface PagedResult<T> {
   items: T[];
   total: number;

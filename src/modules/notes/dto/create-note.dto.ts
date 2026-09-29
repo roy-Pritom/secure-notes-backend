@@ -1,10 +1,23 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
+import {
+  ArrayMaxSize,
+  ArrayUnique,
+  IsArray,
+  IsBoolean,
+  IsEnum,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 
-import { trimString } from '../../../common/transformers';
+import { normalizeTags, trimString } from '../../../common/transformers';
+import { NoteColor } from '../enums';
 import {
   MAX_NOTE_CONTENT_LENGTH,
+  MAX_NOTE_TAG_LENGTH,
+  MAX_NOTE_TAGS,
   MAX_NOTE_TITLE_LENGTH,
 } from '../schemas/note.schema';
 
@@ -25,4 +38,34 @@ export class CreateNoteDto {
   @IsNotEmpty()
   @MaxLength(MAX_NOTE_CONTENT_LENGTH)
   content!: string;
+
+  @ApiPropertyOptional({
+    example: ['chess', 'openings'],
+    type: [String],
+    maxItems: MAX_NOTE_TAGS,
+  })
+  @Transform(normalizeTags)
+  @IsArray()
+  @ArrayUnique()
+  @ArrayMaxSize(MAX_NOTE_TAGS)
+  @IsString({ each: true })
+  @IsNotEmpty({ each: true })
+  @MaxLength(MAX_NOTE_TAG_LENGTH, { each: true })
+  @IsOptional()
+  tags?: string[];
+
+  @ApiPropertyOptional({ default: false })
+  @IsBoolean()
+  @IsOptional()
+  isPinned?: boolean;
+
+  @ApiPropertyOptional({ default: false })
+  @IsBoolean()
+  @IsOptional()
+  isArchived?: boolean;
+
+  @ApiPropertyOptional({ enum: NoteColor, default: NoteColor.Default })
+  @IsEnum(NoteColor)
+  @IsOptional()
+  color?: NoteColor;
 }

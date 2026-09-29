@@ -39,7 +39,7 @@ export class ProfileController {
   }
 
   @Patch()
-  @ApiOperation({ summary: 'Update my name or interests' })
+  @ApiOperation({ summary: 'Update my name, avatar, bio or interests' })
   @ApiOkResponse({ type: UserResponseDto })
   update(
     @CurrentUserId() userId: Types.ObjectId,

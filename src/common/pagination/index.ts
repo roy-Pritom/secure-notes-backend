@@ -9,4 +9,5 @@ export type {
   PagedResult,
   PaginatedResult,
   PaginationMeta,
+  SortSpec,
 } from './pagination.types';

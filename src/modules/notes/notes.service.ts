@@ -7,12 +7,16 @@ import { Types } from 'mongoose';
 
 import {
   PaginatedResponseDto,
-  PaginationQueryDto,
   PaginationService,
 } from '../../common/pagination';
 import { AuthenticatedUser } from '../../common/types';
 import { UserRole } from '../users/enums';
-import { CreateNoteDto, NoteResponseDto, UpdateNoteDto } from './dto';
+import {
+  CreateNoteDto,
+  NoteResponseDto,
+  QueryNotesDto,
+  UpdateNoteDto,
+} from './dto';
 import { NotesRepository } from './notes.repository';
 import { NoteDocument } from './schemas/note.schema';
 
@@ -33,7 +37,7 @@ export class NotesService {
 
   async findOwn(
     owner: Types.ObjectId,
-    query: PaginationQueryDto,
+    query: QueryNotesDto,
   ): Promise<PaginatedResponseDto<NoteResponseDto>> {
     return this.pagination.toResponse(
       await this.notesRepository.findPaginated(query, owner),
@@ -43,7 +47,7 @@ export class NotesService {
   }
 
   async findAll(
-    query: PaginationQueryDto,
+    query: QueryNotesDto,
   ): Promise<PaginatedResponseDto<NoteResponseDto>> {
     return this.pagination.toResponse(
       await this.notesRepository.findPaginated(query),

@@ -12,6 +12,8 @@ export interface CreateUserData {
   passwordHash: string;
   firstName: string;
   lastName: string;
+  avatarUrl?: string;
+  bio?: string;
   interests?: string[];
   roles?: User['roles'];
 }

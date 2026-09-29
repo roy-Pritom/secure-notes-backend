@@ -73,6 +73,8 @@ export class UsersService {
         passwordHash,
         firstName: dto.firstName,
         lastName: dto.lastName,
+        avatarUrl: dto.avatarUrl,
+        bio: dto.bio,
         interests: dto.interests,
         roles: allowRoleAssignment ? dto.roles : [UserRole.User],
       });
@@ -140,7 +142,9 @@ export class UsersService {
       dto.newPassword,
       this.security.bcryptSaltRounds,
     );
-    await this.usersRepository.updateById(id, { $set: { passwordHash } });
+    await this.usersRepository.updateById(id, {
+      $set: { passwordHash, passwordChangedAt: new Date() },
+    });
     // Rotating the password ends every session, on every device.
     await this.refreshTokensService.revokeAllForUser(id);
 

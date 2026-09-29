@@ -33,6 +33,17 @@ export class UserResponseDto {
   fullName!: string;
 
   @Expose()
+  @ApiProperty({
+    example: 'https://cdn.example.com/avatars/ada.png',
+    nullable: true,
+  })
+  avatarUrl!: string | null;
+
+  @Expose()
+  @ApiProperty({ example: 'Writes about endgames.', nullable: true })
+  bio!: string | null;
+
+  @Expose()
   @ApiProperty({ enum: UserRole, isArray: true })
   roles!: UserRole[];
 
@@ -52,6 +63,11 @@ export class UserResponseDto {
   @Expose()
   @Type(() => Date)
   @ApiProperty({ type: Date })
+  passwordChangedAt!: Date;
+
+  @Expose()
+  @Type(() => Date)
+  @ApiProperty({ type: Date })
   createdAt!: Date;
 
   @Expose()
@@ -66,10 +82,13 @@ export class UserResponseDto {
     dto.firstName = user.firstName;
     dto.lastName = user.lastName;
     dto.fullName = `${user.firstName} ${user.lastName}`.trim();
+    dto.avatarUrl = user.avatarUrl;
+    dto.bio = user.bio;
     dto.roles = user.roles;
     dto.status = user.status;
     dto.interests = user.interests;
     dto.lastLoginAt = user.lastLoginAt;
+    dto.passwordChangedAt = user.passwordChangedAt;
     dto.createdAt = user.createdAt;
     dto.updatedAt = user.updatedAt;
     return dto;

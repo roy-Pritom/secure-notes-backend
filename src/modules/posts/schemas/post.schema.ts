@@ -5,11 +5,15 @@ import { HydratedDocument, Model, Types } from 'mongoose';
 import { BaseSchema } from '../../../common/schemas/base.schema';
 import { applyDocumentSerialization } from '../../../common/schemas/serialization';
 import { User } from '../../users/schemas/user.schema';
+import { PostStatus } from '../enums';
 
 export const POST_COLLECTION = 'posts';
 
 export const MAX_POST_TITLE_LENGTH = 160;
 export const MAX_POST_BODY_LENGTH = 10_000;
+export const MAX_POST_EXCERPT_LENGTH = 300;
+export const MAX_POST_TAGS = 10;
+export const MAX_POST_TAG_LENGTH = 30;
 
 /** Public content: every post is readable by anyone, so there is no owner scope. */
 @Schema({
@@ -43,6 +47,45 @@ export class Post extends BaseSchema {
     maxlength: MAX_POST_BODY_LENGTH,
   })
   body!: string;
+
+  /** Derived from `body` when the author does not write one. */
+  @ApiProperty({
+    example: 'A short look at king activity.',
+    maxLength: MAX_POST_EXCERPT_LENGTH,
+  })
+  @Prop({
+    type: String,
+    default: '',
+    trim: true,
+    maxlength: MAX_POST_EXCERPT_LENGTH,
+  })
+  excerpt!: string;
+
+  @ApiProperty({
+    example: ['chess', 'endgame'],
+    type: [String],
+    maxItems: MAX_POST_TAGS,
+  })
+  @Prop({
+    type: [String],
+    default: [],
+    trim: true,
+    lowercase: true,
+  })
+  tags!: string[];
+
+  @ApiProperty({ enum: PostStatus, default: PostStatus.Published })
+  @Prop({
+    type: String,
+    enum: Object.values(PostStatus),
+    default: PostStatus.Published,
+  })
+  status!: PostStatus;
+
+  /** Stamped the moment the post first goes out; null while it is a draft. */
+  @ApiProperty({ type: Date, nullable: true })
+  @Prop({ type: Date, default: null })
+  publishedAt!: Date | null;
 }
 
 export type PostDocument = HydratedDocument<Post>;

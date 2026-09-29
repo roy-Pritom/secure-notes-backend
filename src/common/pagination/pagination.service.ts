@@ -3,19 +3,24 @@ import { FilterQuery, Model } from 'mongoose';
 
 import { PaginatedResponseDto } from './paginated-response.dto';
 import { PaginationQueryDto } from './pagination-query.dto';
-import { PagedResult } from './pagination.types';
+import { PagedResult, SortSpec } from './pagination.types';
 
 @Injectable()
 export class PaginationService {
+  /**
+   * @param sort overrides the default `createdAt` ordering — for a listing
+   * whose index puts another key first, such as notes pinned to the top.
+   */
   async fetchPage<TDoc>(
     model: Model<TDoc>,
     filter: FilterQuery<TDoc>,
     query: PaginationQueryDto,
+    sort?: SortSpec,
   ): Promise<PagedResult<TDoc>> {
     const [items, total] = await Promise.all([
       model
         .find(filter)
-        .sort({ createdAt: query.createdAtSort })
+        .sort(sort ?? { createdAt: query.createdAtSort })
         .skip(query.skip)
         .limit(query.limit)
         .exec(),

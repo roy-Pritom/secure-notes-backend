@@ -4,9 +4,10 @@ import { FilterQuery, Types, UpdateQuery } from 'mongoose';
 
 import {
   PagedResult,
-  PaginationQueryDto,
   PaginationService,
+  SortSpec,
 } from '../../common/pagination';
+import { QueryNotesDto } from './dto';
 import { Note, type NoteDocument, type NoteModel } from './schemas/note.schema';
 import { CreateNoteData } from './types';
 
@@ -33,10 +34,11 @@ export class NotesRepository {
   /**
    * `owner` scopes the page to one account and is dropped for an admin
    * listing; the two cases are served by `own_notes_by_created` and
-   * `all_notes_by_created` respectively.
+   * `all_notes_by_created` respectively, with `own_notes_by_tag` taking over
+   * when a tag is supplied.
    */
   async findPaginated(
-    query: PaginationQueryDto,
+    query: QueryNotesDto,
     owner?: Types.ObjectId,
   ): Promise<PagedResult<NoteDocument>> {
     // The document type is stated rather than inferred: a filter typed on the
@@ -44,8 +46,9 @@ export class NotesRepository {
     // unhydrated.
     return this.pagination.fetchPage<NoteDocument>(
       this.noteModel,
-      this.live(owner ? { owner } : {}),
+      this.buildFilter(query, owner),
       query,
+      pinnedFirst(query),
     );
   }
 
@@ -79,4 +82,34 @@ export class NotesRepository {
       .exec();
     return result.modifiedCount;
   }
+
+  /**
+   * `isArchived` is always pinned to a value rather than left open: an
+   * archived note is filed away, so it has to be asked for explicitly.
+   */
+  private buildFilter(
+    query: QueryNotesDto,
+    owner?: Types.ObjectId,
+  ): FilterQuery<Note> {
+    const filter: FilterQuery<Note> = { isArchived: query.archived };
+    if (owner) {
+      filter.owner = owner;
+    }
+    if (query.tag) {
+      filter.tags = query.tag;
+    }
+    if (query.pinned !== undefined) {
+      filter.isPinned = query.pinned;
+    }
+    return this.live(filter);
+  }
+}
+
+/**
+ * Pinned notes lead, then the requested date order. The descending page —
+ * the default — is read straight off the index; `?sortOrder=asc` flips only
+ * the second key, so that direction is sorted in memory.
+ */
+function pinnedFirst(query: QueryNotesDto): SortSpec {
+  return { isPinned: -1, createdAt: query.createdAtSort };
 }

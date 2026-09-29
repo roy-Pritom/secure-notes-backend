@@ -269,10 +269,19 @@ describe('Soft delete (e2e)', () => {
       expect(await keys('notes', 'own_notes_by_created')).toEqual({
         owner: 1,
         isDeleted: 1,
+        isArchived: 1,
+        isPinned: -1,
         createdAt: -1,
+      });
+      expect(await keys('notes', 'own_notes_by_tag')).toEqual({
+        owner: 1,
+        isDeleted: 1,
+        tags: 1,
       });
       expect(await keys('notes', 'all_notes_by_created')).toEqual({
         isDeleted: 1,
+        isArchived: 1,
+        isPinned: -1,
         createdAt: -1,
       });
       expect(await keys('users', 'active_users_by_created')).toEqual({
@@ -378,45 +387,72 @@ describe('Soft-delete listings read straight from an index (e2e)', () => {
   const planFor = async (
     collection: string,
     filter: Record<string, unknown>,
+    sort: Record<string, 1 | -1>,
   ): Promise<{ stages: string[]; indexes: string[] }> =>
     winningPlan(
       await harness.connection
         .collection(collection)
         .find(filter)
-        .sort({ createdAt: -1 })
+        .sort(sort)
         .explain(),
     );
 
-  const cases: [string, string, string, Record<string, unknown>][] = [
-    [
-      'a user-scoped note listing',
-      'notes',
-      'own_notes_by_created',
-      { isDeleted: false },
-    ],
-    ['the admin note listing', 'notes', 'all_notes_by_created', {}],
-    ['the user listing', 'users', 'active_users_by_created', {}],
-    [
-      "an author's posts, as the $lookup reads them",
-      'posts',
-      'posts_by_author_created',
-      {},
-    ],
+  const byCreated: Record<string, 1 | -1> = { createdAt: -1 };
+  // Notes lead with the pinned ones, so their listings carry a two-key sort
+  // and an `isArchived` equality the index has to cover as well.
+  const pinnedFirst: Record<string, 1 | -1> = { isPinned: -1, createdAt: -1 };
+
+  interface PlanCase {
+    label: string;
+    collection: string;
+    indexName: string;
+    filter: (ownerId: Types.ObjectId) => Record<string, unknown>;
+    sort: Record<string, 1 | -1>;
+  }
+
+  const cases: PlanCase[] = [
+    {
+      label: 'a user-scoped note listing',
+      collection: 'notes',
+      indexName: 'own_notes_by_created',
+      filter: (ownerId) => ({
+        owner: ownerId,
+        isDeleted: false,
+        isArchived: false,
+      }),
+      sort: pinnedFirst,
+    },
+    {
+      label: 'the admin note listing',
+      collection: 'notes',
+      indexName: 'all_notes_by_created',
+      filter: () => ({ isDeleted: false, isArchived: false }),
+      sort: pinnedFirst,
+    },
+    {
+      label: 'the user listing',
+      collection: 'users',
+      indexName: 'active_users_by_created',
+      filter: () => ({ isDeleted: false }),
+      sort: byCreated,
+    },
+    {
+      label: "an author's posts, as the $lookup reads them",
+      collection: 'posts',
+      indexName: 'posts_by_author_created',
+      filter: (ownerId) => ({ author: ownerId, isDeleted: false }),
+      sort: byCreated,
+    },
   ];
 
   it.each(cases)(
-    'serves %s from %s',
-    async (_label, collection, indexName, extra) => {
-      const scoped =
-        indexName === 'own_notes_by_created' ||
-        indexName === 'posts_by_author_created';
-      const ownerKey = collection === 'posts' ? 'author' : 'owner';
-
-      const { stages, indexes } = await planFor(collection, {
-        ...(scoped ? { [ownerKey]: new Types.ObjectId(owner.id) } : {}),
-        isDeleted: false,
-        ...extra,
-      });
+    'serves $label from $indexName',
+    async ({ collection, indexName, filter, sort }) => {
+      const { stages, indexes } = await planFor(
+        collection,
+        filter(new Types.ObjectId(owner.id)),
+        sort,
+      );
 
       expect(indexes).toContain(indexName);
       expect(stages).toContain('IXSCAN');
@@ -425,4 +461,25 @@ describe('Soft-delete listings read straight from an index (e2e)', () => {
       expect(stages).not.toContain('SORT');
     },
   );
+
+  it('narrows a note listing to one tag without scanning the collection', async () => {
+    // Either note index can serve this: `own_notes_by_tag` matches the tag
+    // from the index and sorts in memory, `own_notes_by_created` does the
+    // reverse. Which one wins is the planner's call — the assertion is only
+    // that it never falls back to reading every document.
+    const { stages, indexes } = await planFor(
+      'notes',
+      {
+        owner: new Types.ObjectId(owner.id),
+        isDeleted: false,
+        isArchived: false,
+        tags: 'planning',
+      },
+      pinnedFirst,
+    );
+
+    expect(stages).toContain('IXSCAN');
+    expect(stages).not.toContain('COLLSCAN');
+    expect(indexes.some((name) => name.startsWith('own_notes_by_'))).toBe(true);
+  });
 });
