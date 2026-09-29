@@ -1,1 +1,1 @@
-export type { AuthenticatedUser, JwtPayload, TokenPair } from './jwt.types';
+export type { JwtPayload, TokenPair } from './jwt.types';

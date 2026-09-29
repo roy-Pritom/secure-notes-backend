@@ -1,4 +1,11 @@
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  HttpCode,
+  HttpStatus,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import {
   ApiBearerAuth,
@@ -12,15 +19,19 @@ import {
 } from '@nestjs/swagger';
 import { Types } from 'mongoose';
 
+import { CurrentUserId, Public } from '../../common/decorators';
+import { JwtAuthGuard, RolesGuard } from '../../common/guards';
 import { API_VERSION } from '../../utils/constant';
 import { AuthService } from './auth.service';
-import { CurrentUserId, Public } from './decorators';
 import { AuthResponseDto, LoginDto, RefreshTokenDto, RegisterDto } from './dto';
 
 /** Credential endpoints are rate limited well below the global ceiling. */
 const CREDENTIAL_THROTTLE = { default: { limit: 10, ttl: 60_000 } };
 
 @ApiTags('auth')
+// Guarded like every other controller; the credential routes below opt out
+// individually with `@Public()` rather than the class going unguarded.
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller({ path: 'auth', version: API_VERSION.V1 })
 export class AuthController {
   constructor(private readonly authService: AuthService) {}

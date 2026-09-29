@@ -28,26 +28,47 @@ notes is deliberately not the same as editing them — only an owner may write.
 
 ## Guards
 
-The three guards live together in [`src/common/guards`](src/common/guards) and are all
-registered globally, so a new route is protected by default and opts out explicitly.
-They run in this order:
+The three guards and the module that owns them live in
+[`src/common/guards`](src/common/guards); the decorators that steer them are in
+[`src/common/decorators`](src/common/decorators). Every controller declares its
+protection explicitly:
 
-| Guard | Answers | Opt out with |
-| --- | --- | --- |
-| `ApiKeyGuard` | Is this a known client application? | `@SkipApiKey()` |
-| `JwtAuthGuard` | Which user is calling? | `@Public()` |
-| `RolesGuard` | May that user do this? | *(no `@Roles()` on the route)* |
+```ts
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Controller({ path: 'notes', version: API_VERSION.V1 })
+export class NotesController {
+  @Roles(UserRole.Admin)
+  @Get('all')
+  findAll(...)   // admin only
+}
+```
 
-The order is what makes the stack useful: an unknown client is turned away by
-`ApiKeyGuard` before any credential is read, which is why `@Public()` does **not**
+| Guard | Bound | Answers | Opt out with |
+| --- | --- | --- | --- |
+| `ApiKeyGuard` | globally | Is this a known client application? | `@SkipApiKey()` |
+| `JwtAuthGuard` | per controller | Which user is calling? | `@Public()` |
+| `RolesGuard` | per controller | May that user do this? | *(no `@Roles()`)* |
+
+Global guards run before controller-bound ones, so the chain is throttle → client
+key → bearer token → role. The order is what makes it useful: an unknown client is
+turned away before any credential is read, which is why `@Public()` does **not**
 exempt a route from the key — `login` and `register` are public to people, not to
-anonymous clients. Only the health probes carry `@SkipApiKey()`, because
-orchestrators and load balancers cannot be taught to send one.
+anonymous clients.
 
-`JwtAuthGuard` resolves the bearer token onto `request.user`, so `RolesGuard` and the
-`@CurrentUser()` / `@CurrentUserId()` decorators can rely on it being there. Ownership
-is *not* a guard: it depends on the record, so it is enforced in `NotesService` where
-the note is already loaded.
+`JwtAuthGuard` resolves the token onto `request.user`, which is why it is always
+listed first: `RolesGuard` and the `@CurrentUser()` / `@CurrentUserId()` decorators
+read what it puts there. A route with no `@Roles()` passes for any authenticated
+caller, which is how an admin inherits every user capability without a single
+`@Roles(UserRole.User)` anywhere. Ownership is deliberately *not* a guard — it
+depends on the record, so `NotesService` enforces it where the note is already
+loaded.
+
+`GuardsModule` is `@Global()` because `@UseGuards()` resolves guards from the
+*controller's* module; without it every feature module would have to import a module
+just to protect its own routes. `HealthController` is the one controller with no
+`@UseGuards` — probes answer before anyone has a token — and
+[`controller-guards.spec.ts`](src/common/guards/controller-guards.spec.ts) fails if
+any other controller is left unguarded.
 
 Client keys come from `API_KEYS` (comma-separated, one per client). Leave it empty and
 the gate is inert — convenient locally and in the e2e suite — while the environment

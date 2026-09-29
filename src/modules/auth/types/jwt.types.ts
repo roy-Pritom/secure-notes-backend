@@ -7,13 +7,6 @@ export interface JwtPayload {
   roles: UserRole[];
 }
 
-/** What the guard attaches to `request.user`. */
-export interface AuthenticatedUser {
-  id: string;
-  email: string;
-  roles: UserRole[];
-}
-
 export interface TokenPair {
   accessToken: string;
   refreshToken: string;

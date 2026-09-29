@@ -9,6 +9,7 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -23,11 +24,12 @@ import {
 } from '@nestjs/swagger';
 import { Types } from 'mongoose';
 
+import { Roles } from '../../common/decorators';
 import { PaginatedResponseDto } from '../../common/dto/paginated-response.dto';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
+import { JwtAuthGuard, RolesGuard } from '../../common/guards';
 import { ParseObjectIdPipe } from '../../common/pipes/parse-object-id.pipe';
 import { API_VERSION } from '../../utils/constant';
-import { Roles } from '../auth/decorators';
 import {
   AdminUpdateUserDto,
   CreateUserDto,
@@ -46,6 +48,7 @@ import { UsersService } from './users.service';
 @ApiTags('users')
 @ApiBearerAuth()
 @ApiForbiddenResponse({ description: 'Requires the admin role' })
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller({ path: 'users', version: API_VERSION.V1 })
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}

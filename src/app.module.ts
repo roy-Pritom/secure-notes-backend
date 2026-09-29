@@ -4,7 +4,7 @@ import { APP_FILTER, APP_GUARD, APP_PIPE } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 
 import { AllExceptionsFilter } from './common/filters';
-import { ApiKeyGuard } from './common/guards';
+import { GuardsModule } from './common/guards';
 import { AppValidationPipe } from './common/pipes/app-validation.pipe';
 import { ConfigModule, SECURITY_CONFIG_KEY, SecurityConfig } from './config';
 import { DatabaseModule } from './database/database.module';
@@ -19,6 +19,9 @@ import { UsersModule } from './modules/users/users.module';
     // Must come first: everything below reads validated configuration.
     ConfigModule,
     DatabaseModule,
+    // Global: publishes the guard stack to every feature module's injector and
+    // binds `ApiKeyGuard` across the whole surface.
+    GuardsModule,
 
     ThrottlerModule.forRootAsync({
       inject: [ConfigService],
@@ -43,12 +46,12 @@ import { UsersModule } from './modules/users/users.module';
     // Registered as providers so they take part in DI and stay active in
     // e2e tests that build the module directly.
     { provide: APP_PIPE, useClass: AppValidationPipe },
-    // Guard order follows registration order, and `AppModule` is scanned
-    // before its imports: rate limit, then client key, then the bearer token
-    // and role checks `AuthModule` registers. An unknown client is rejected
-    // before any credential is read.
+    // Globals run before controller-bound guards, and `AppModule` is scanned
+    // before its imports, so the chain is: rate limit, then the client key
+    // `GuardsModule` binds, then the `@UseGuards(JwtAuthGuard, RolesGuard)`
+    // each controller declares. An unknown client is turned away before any
+    // credential is read.
     { provide: APP_GUARD, useClass: ThrottlerGuard },
-    { provide: APP_GUARD, useClass: ApiKeyGuard },
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
   ],
 })

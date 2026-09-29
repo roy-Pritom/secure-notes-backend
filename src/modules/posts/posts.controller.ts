@@ -1,4 +1,4 @@
-import { Body, Controller, Post as HttpPost } from '@nestjs/common';
+import { Body, Controller, Post as HttpPost, UseGuards } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
@@ -7,13 +7,15 @@ import {
 } from '@nestjs/swagger';
 import { Types } from 'mongoose';
 
+import { CurrentUserId } from '../../common/decorators';
+import { JwtAuthGuard, RolesGuard } from '../../common/guards';
 import { API_VERSION } from '../../utils/constant';
-import { CurrentUserId } from '../auth/decorators';
 import { CreatePostDto, PostResponseDto } from './dto';
 import { PostsService } from './posts.service';
 
 @ApiTags('posts')
 @ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller({ path: 'posts', version: API_VERSION.V1 })
 export class PostsController {
   constructor(private readonly postsService: PostsService) {}

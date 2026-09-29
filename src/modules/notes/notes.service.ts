@@ -7,7 +7,7 @@ import { Types } from 'mongoose';
 
 import { PaginatedResponseDto } from '../../common/dto/paginated-response.dto';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
-import { AuthenticatedUser } from '../auth/types';
+import { AuthenticatedUser } from '../../common/types';
 import { UserRole } from '../users/enums';
 import { CreateNoteDto, NoteResponseDto, UpdateNoteDto } from './dto';
 import { NotesRepository } from './notes.repository';

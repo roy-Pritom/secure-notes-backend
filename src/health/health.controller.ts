@@ -9,7 +9,6 @@ import {
 } from '@nestjs/terminus';
 
 import { SkipApiKey } from '../common/decorators';
-import { Public } from '../modules/auth/decorators';
 import { MongoConnectionIndicator } from './indicators/mongo-connection.indicator';
 
 const HEAP_LIMIT_BYTES = 300 * 1024 * 1024;
@@ -17,9 +16,9 @@ const RSS_LIMIT_BYTES = 512 * 1024 * 1024;
 const DB_PING_TIMEOUT_MS = 1500;
 
 @ApiTags('health')
-// Probes must answer before anyone has a token, and orchestrators and load
-// balancers cannot be taught to carry a client key.
-@Public()
+// The one controller with no `@UseGuards(JwtAuthGuard, RolesGuard)`: probes must
+// answer before anyone has a token. `@SkipApiKey()` clears the one guard that is
+// still global, because orchestrators and load balancers cannot carry a key.
 @SkipApiKey()
 // Version-neutral: versioning would otherwise move the probes to `/v1/health`
 // and silently break orchestrator health checks.

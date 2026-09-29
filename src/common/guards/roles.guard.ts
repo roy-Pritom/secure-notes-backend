@@ -7,11 +7,16 @@ import {
 import { Reflector } from '@nestjs/core';
 import { Request } from 'express';
 
-import { ROLES_KEY } from '../../modules/auth/decorators';
-import { AuthenticatedUser } from '../../modules/auth/types';
 import { UserRole } from '../../modules/users/enums';
+import { ROLES_KEY } from '../decorators';
+import { AuthenticatedUser } from '../types';
 
-/** Enforces `@Roles()`. Runs after `JwtAuthGuard`, so `request.user` is set. */
+/**
+ * Enforces `@Roles()`. Always listed after `JwtAuthGuard` in `@UseGuards()`, so
+ * `request.user` is set by the time it runs. A route with no `@Roles()` passes
+ * for any authenticated caller — which is how an admin inherits every user
+ * capability without a single `@Roles(UserRole.User)` anywhere.
+ */
 @Injectable()
 export class RolesGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}

@@ -9,6 +9,7 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -22,18 +23,20 @@ import {
 } from '@nestjs/swagger';
 import { Types } from 'mongoose';
 
+import { CurrentUser, CurrentUserId, Roles } from '../../common/decorators';
 import { PaginatedResponseDto } from '../../common/dto/paginated-response.dto';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
+import { JwtAuthGuard, RolesGuard } from '../../common/guards';
 import { ParseObjectIdPipe } from '../../common/pipes/parse-object-id.pipe';
+import type { AuthenticatedUser } from '../../common/types';
 import { API_VERSION } from '../../utils/constant';
-import { CurrentUser, CurrentUserId, Roles } from '../auth/decorators';
-import type { AuthenticatedUser } from '../auth/types';
 import { UserRole } from '../users/enums';
 import { CreateNoteDto, NoteResponseDto, UpdateNoteDto } from './dto';
 import { NotesService } from './notes.service';
 
 @ApiTags('notes')
 @ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller({ path: 'notes', version: API_VERSION.V1 })
 export class NotesController {
   constructor(private readonly notesService: NotesService) {}

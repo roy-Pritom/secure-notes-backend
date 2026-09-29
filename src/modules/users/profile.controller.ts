@@ -5,6 +5,7 @@ import {
   HttpCode,
   HttpStatus,
   Patch,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -16,14 +17,16 @@ import {
 } from '@nestjs/swagger';
 import { Types } from 'mongoose';
 
+import { CurrentUserId } from '../../common/decorators';
+import { JwtAuthGuard, RolesGuard } from '../../common/guards';
 import { API_VERSION } from '../../utils/constant';
-import { CurrentUserId } from '../auth/decorators';
 import { UpdatePasswordDto, UpdateUserDto, UserResponseDto } from './dto';
 import { UsersService } from './users.service';
 
 /** The caller's own account. The id always comes from the token, never the URL. */
 @ApiTags('profile')
 @ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller({ path: 'profile', version: API_VERSION.V1 })
 export class ProfileController {
   constructor(private readonly usersService: UsersService) {}

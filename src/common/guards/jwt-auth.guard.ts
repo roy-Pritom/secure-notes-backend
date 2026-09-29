@@ -8,12 +8,16 @@ import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
 
-import { IS_PUBLIC_KEY } from '../../modules/auth/decorators';
-import { AuthenticatedUser, JwtPayload } from '../../modules/auth/types';
+import { JwtPayload } from '../../modules/auth/types';
+import { IS_PUBLIC_KEY } from '../decorators';
+import { AuthenticatedUser } from '../types';
 
 /**
- * Applied globally, so a new route is protected unless it is explicitly
- * marked `@Public()` — the safe default is the one you get by forgetting.
+ * Verifies the bearer token and resolves it onto `request.user`, which
+ * `RolesGuard` and `@CurrentUser()` then read.
+ *
+ * Declared per controller with `@UseGuards(JwtAuthGuard, RolesGuard)`; a route
+ * inside a guarded controller opts out with `@Public()`.
  */
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
