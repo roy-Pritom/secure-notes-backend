@@ -1,5 +1,7 @@
 import { registerAs } from '@nestjs/config';
 
+import { NodeEnv } from './env.validation';
+
 export const DATABASE_CONFIG_KEY = 'database';
 
 export interface DatabaseConfig {
@@ -9,6 +11,7 @@ export interface DatabaseConfig {
   minPoolSize: number;
   serverSelectionTimeoutMS: number;
   debug: boolean;
+  syncIndexesOnBoot: boolean;
 }
 
 export default registerAs<DatabaseConfig>(DATABASE_CONFIG_KEY, () => ({
@@ -20,4 +23,11 @@ export default registerAs<DatabaseConfig>(DATABASE_CONFIG_KEY, () => ({
     process.env.MONGODB_SERVER_SELECTION_TIMEOUT_MS ?? 5000,
   ),
   debug: process.env.MONGODB_DEBUG === 'true',
+  // Unset follows the environment: a developer's database keeps itself current,
+  // a production deploy runs `pnpm db:indexes` before the new code takes
+  // traffic. An explicit value wins either way.
+  syncIndexesOnBoot:
+    process.env.MONGODB_SYNC_INDEXES === undefined
+      ? process.env.NODE_ENV !== NodeEnv.Production
+      : process.env.MONGODB_SYNC_INDEXES === 'true',
 }));

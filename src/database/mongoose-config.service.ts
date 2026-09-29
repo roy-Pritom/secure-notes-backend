@@ -37,8 +37,10 @@ export class MongooseConfigService implements MongooseOptionsFactory {
       connectTimeoutMS: 10_000,
       heartbeatFrequencyMS: 10_000,
 
-      // Indexes in production should come from a deliberate migration.
-      autoIndex: !app.isProduction,
+      // Index builds are `IndexSyncService`'s job, not a side effect of the
+      // first query against a model: it reports what it created, and in
+      // production it is a deploy step rather than something a boot decides.
+      autoIndex: false,
       autoCreate: !app.isProduction,
       // Majority writes plus retries survive a replica failover.
       writeConcern: { w: 'majority', journal: true },

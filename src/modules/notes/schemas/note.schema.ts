@@ -84,6 +84,18 @@ export type NoteModel = Model<NoteDocument>;
 
 export const NoteSchema = SchemaFactory.createForClass(Note);
 
+/*
+ * Indexes — one per access path, nothing speculative.
+ *
+ * 1. own_notes_by_created   `GET /notes`, a user's own listing
+ * 2. all_notes_by_created   `GET /notes/all`, the admin listing
+ * 3. own_notes_by_tag       the same two listings narrowed by `?tag=`
+ * 4. all_notes_by_tag
+ *
+ * Every listing filters `isDeleted` and `isArchived` and orders pinned notes
+ * first, so those keys lead in each of them. Reads of a single note go through
+ * `_id`, which MongoDB already indexes.
+ */
 
 NoteSchema.index(
   { owner: 1, isDeleted: 1, isArchived: 1, isPinned: -1, createdAt: -1 },
@@ -95,12 +107,21 @@ NoteSchema.index(
   { name: 'all_notes_by_created' },
 );
 
-// Multikey on `tags`, so it ends the key list: a multikey field cannot be
-// followed by a sort key the index is expected to serve. `isArchived` and the
-// ordering are applied to what this returns.
+/*
+ * The `?tag=` variants. Multikey on `tags`, so it ends the key list: a
+ * multikey field cannot be followed by a sort key the index is expected to
+ * serve, and the pinned-first ordering is applied to what these return. Every
+ * equality the filter carries still precedes it, so the scan is bounded to one
+ * owner's live, unarchived notes rather than narrowed afterwards.
+ */
 NoteSchema.index(
-  { owner: 1, isDeleted: 1, tags: 1 },
+  { owner: 1, isDeleted: 1, isArchived: 1, tags: 1 },
   { name: 'own_notes_by_tag' },
+);
+
+NoteSchema.index(
+  { isDeleted: 1, isArchived: 1, tags: 1 },
+  { name: 'all_notes_by_tag' },
 );
 
 applyDocumentSerialization(NoteSchema);

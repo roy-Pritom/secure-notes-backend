@@ -276,6 +276,7 @@ describe('Soft delete (e2e)', () => {
       expect(await keys('notes', 'own_notes_by_tag')).toEqual({
         owner: 1,
         isDeleted: 1,
+        isArchived: 1,
         tags: 1,
       });
       expect(await keys('notes', 'all_notes_by_created')).toEqual({
@@ -283,6 +284,11 @@ describe('Soft delete (e2e)', () => {
         isArchived: 1,
         isPinned: -1,
         createdAt: -1,
+      });
+      expect(await keys('notes', 'all_notes_by_tag')).toEqual({
+        isDeleted: 1,
+        isArchived: 1,
+        tags: 1,
       });
       expect(await keys('users', 'active_users_by_created')).toEqual({
         isDeleted: 1,
@@ -462,24 +468,38 @@ describe('Soft-delete listings read straight from an index (e2e)', () => {
     },
   );
 
-  it('narrows a note listing to one tag without scanning the collection', async () => {
-    // Either note index can serve this: `own_notes_by_tag` matches the tag
-    // from the index and sorts in memory, `own_notes_by_created` does the
-    // reverse. Which one wins is the planner's call — the assertion is only
-    // that it never falls back to reading every document.
-    const { stages, indexes } = await planFor(
-      'notes',
-      {
-        owner: new Types.ObjectId(owner.id),
-        isDeleted: false,
-        isArchived: false,
-        tags: 'planning',
-      },
-      pinnedFirst,
-    );
+  // Either note index can serve a tag filter: the `_by_tag` one matches the
+  // tag from the index and sorts in memory, the `_by_created` one does the
+  // reverse. Which one wins is the planner's call — the assertion is only that
+  // it never falls back to reading every document.
+  it.each([
+    {
+      label: "a user's own listing",
+      scope: (ownerId: Types.ObjectId) => ({ owner: ownerId }),
+      prefix: 'own_notes_by_',
+    },
+    {
+      label: 'the admin listing',
+      scope: () => ({}),
+      prefix: 'all_notes_by_',
+    },
+  ])(
+    'narrows $label to one tag without scanning the collection',
+    async ({ scope, prefix }) => {
+      const { stages, indexes } = await planFor(
+        'notes',
+        {
+          ...scope(new Types.ObjectId(owner.id)),
+          isDeleted: false,
+          isArchived: false,
+          tags: 'planning',
+        },
+        pinnedFirst,
+      );
 
-    expect(stages).toContain('IXSCAN');
-    expect(stages).not.toContain('COLLSCAN');
-    expect(indexes.some((name) => name.startsWith('own_notes_by_'))).toBe(true);
-  });
+      expect(stages).toContain('IXSCAN');
+      expect(stages).not.toContain('COLLSCAN');
+      expect(indexes.some((name) => name.startsWith(prefix))).toBe(true);
+    },
+  );
 });

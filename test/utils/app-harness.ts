@@ -52,6 +52,9 @@ export async function startHarness(
   process.env.MONGODB_DB_NAME = dbName;
   process.env.JWT_SECRET = 'e2e-access-secret-long-enough-to-pass-1234';
   process.env.JWT_REFRESH_SECRET = 'e2e-refresh-secret-long-enough-to-pass-56';
+  // Every spec asserts on indexes or on the plan that uses them, so the build
+  // is pinned on rather than left to whatever `.env` happens to say.
+  process.env.MONGODB_SYNC_INDEXES = 'true';
   // Login lockout has its own test; it must not trip the other specs.
   process.env.LOGIN_MAX_ATTEMPTS = '5';
   // Pinned so the seeded administrator cannot collide with a test account.

@@ -78,6 +78,12 @@ export class EnvironmentVariables {
   @IsBoolean()
   MONGODB_DEBUG: boolean = false;
 
+
+  @Transform(toBoolean)
+  @IsBoolean()
+  @IsOptional()
+  MONGODB_SYNC_INDEXES?: boolean;
+
   @IsString()
   @MinLength(32, { message: 'JWT_SECRET must be at least 32 characters' })
   JWT_SECRET!: string;

@@ -309,6 +309,7 @@ describe('Aggregations (e2e)', () => {
       expect(await names('notes')).toEqual([
         '_id_',
         'all_notes_by_created',
+        'all_notes_by_tag',
         'own_notes_by_created',
         'own_notes_by_tag',
       ]);
