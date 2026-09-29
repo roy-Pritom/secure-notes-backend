@@ -19,7 +19,7 @@ export class NotesRepository {
   ) {}
 
   private live(filter: FilterQuery<Note> = {}): FilterQuery<Note> {
-    return { ...filter, deletedAt: null };
+    return { ...filter, isDeleted: false };
   }
 
   async create(data: CreateNoteData): Promise<NoteDocument> {
@@ -62,6 +62,21 @@ export class NotesRepository {
   }
 
   async softDeleteById(id: Types.ObjectId): Promise<NoteDocument | null> {
-    return this.updateById(id, { $set: { deletedAt: new Date() } });
+    return this.updateById(id, {
+      $set: { isDeleted: true, deletedAt: new Date() },
+    });
+  }
+
+  /**
+   * Every live note of one owner, in one write. Served by the
+   * `{ owner, isDeleted }` prefix of `own_notes_by_created`.
+   */
+  async softDeleteByOwner(owner: Types.ObjectId): Promise<number> {
+    const result = await this.noteModel
+      .updateMany(this.live({ owner }), {
+        $set: { isDeleted: true, deletedAt: new Date() },
+      })
+      .exec();
+    return result.modifiedCount;
   }
 }

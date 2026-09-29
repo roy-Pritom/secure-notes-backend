@@ -31,7 +31,6 @@ export class NotesService {
     return NoteResponseDto.fromEntity(note);
   }
 
-  /** A user's own notes. Admins use `findAll` for the cross-account view. */
   async findOwn(
     owner: Types.ObjectId,
     query: PaginationQueryDto,
@@ -80,7 +79,14 @@ export class NotesService {
     await this.notesRepository.softDeleteById(id);
   }
 
-  /** Admins may read any note; everyone else only their own. */
+  /**
+   * Cascade for a deleted account. No ownership check: the caller has already
+   * established the right to remove the owner themselves.
+   */
+  removeAllForOwner(owner: Types.ObjectId): Promise<number> {
+    return this.notesRepository.softDeleteByOwner(owner);
+  }
+
   private async getReadable(
     id: Types.ObjectId,
     caller: AuthenticatedUser,

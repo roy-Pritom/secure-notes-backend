@@ -43,7 +43,6 @@ import {
 import { UserRole } from './enums';
 import { UsersService } from './users.service';
 
-
 @ApiTags('users')
 @ApiBearerAuth()
 @ApiForbiddenResponse({ description: 'Requires the admin role' })
@@ -70,7 +69,6 @@ export class UsersController {
     return this.usersService.findAll(query);
   }
 
-  
   @Roles(UserRole.Admin)
   @Get('interests')
   @ApiOperation({ summary: 'Users grouped by interest (aggregation)' })

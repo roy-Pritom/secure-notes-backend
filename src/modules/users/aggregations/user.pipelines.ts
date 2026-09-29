@@ -32,7 +32,7 @@ function paginate(
 /**
  * Scenario 1 — users grouped by interest.
  *
- * Index: `active_users_by_interest` ({ deletedAt: 1, interests: 1 }). The
+ * Index: `active_users_by_interest` ({ isDeleted: 1, interests: 1 }). The
  * leading `$match` hits its prefix, and a supplied `interest` makes it an
  * exact two-key equality.
  */
@@ -42,8 +42,8 @@ export function interestGroupsPipeline(
   interest?: string,
 ): PipelineStage[] {
   const match = interest
-    ? { deletedAt: null, interests: interest }
-    : { deletedAt: null };
+    ? { isDeleted: false, interests: interest }
+    : { isDeleted: false };
 
   return [
     { $match: match },
@@ -72,8 +72,9 @@ export function interestGroupsPipeline(
 /**
  * Scenario 2 — one user with their posts, joined in a single pass.
  *
- * Index: `posts_by_author_created` ({ author: 1, createdAt: -1 }) drives both
- * the join on `author` and the `$sort` inside the sub-pipeline.
+ * Index: `posts_by_author_created` ({ author: 1, isDeleted: 1, createdAt: -1 })
+ * drives the join on `author`, the sub-pipeline's active-only `$match`, and its
+ * `$sort` — all three read straight off the one index.
  */
 export function userPostsPipeline(
   userId: Types.ObjectId,
@@ -81,7 +82,7 @@ export function userPostsPipeline(
   limit: number,
 ): PipelineStage[] {
   return [
-    { $match: { _id: userId, deletedAt: null } },
+    { $match: { _id: userId, isDeleted: false } },
     {
       $lookup: {
         from: POST_COLLECTION,
@@ -89,6 +90,7 @@ export function userPostsPipeline(
         foreignField: 'author',
         as: 'posts',
         pipeline: [
+          { $match: { isDeleted: false } },
           { $sort: { createdAt: -1 } },
           {
             $facet: {

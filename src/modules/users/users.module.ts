@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 
 import { PaginationModule } from '../../common/pagination';
+import { NotesModule } from '../notes/notes.module';
+import { PostsModule } from '../posts/posts.module';
 import { RefreshTokensModule } from '../refresh-tokens/refresh-tokens.module';
 import { AdminBootstrapService } from './admin-bootstrap.service';
 import { ProfileController } from './profile.controller';
@@ -16,6 +18,9 @@ import { UsersService } from './users.service';
     PaginationModule,
     // Password, role, status and deletion changes all end a user's sessions.
     RefreshTokensModule,
+    // Deleting an account cascades onto the content it owns.
+    NotesModule,
+    PostsModule,
   ],
   controllers: [UsersController, ProfileController],
   providers: [UsersService, UsersRepository, AdminBootstrapService],

@@ -15,5 +15,7 @@ import { Note, NoteSchema } from './schemas/note.schema';
   ],
   controllers: [NotesController],
   providers: [NotesService, NotesRepository],
+  // `UsersModule` cascades a deleted account onto its notes.
+  exports: [NotesService],
 })
 export class NotesModule {}

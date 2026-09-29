@@ -140,12 +140,12 @@ two of [`docs/ERD.pdf`](docs/ERD.pdf).
 
 | Collection | Index | Keys |
 | --- | --- | --- |
-| users | `uniq_active_email` | `{ email: 1 }` unique, partial on `deletedAt: null` |
-| users | `active_users_by_created` | `{ deletedAt: 1, createdAt: -1 }` |
-| users | `active_users_by_interest` | `{ deletedAt: 1, interests: 1 }` |
-| notes | `own_notes_by_created` | `{ owner: 1, deletedAt: 1, createdAt: -1 }` |
-| notes | `all_notes_by_created` | `{ deletedAt: 1, createdAt: -1 }` |
-| posts | `posts_by_author_created` | `{ author: 1, createdAt: -1 }` |
+| users | `uniq_active_email` | `{ email: 1 }` unique, partial on `isDeleted: false` |
+| users | `active_users_by_created` | `{ isDeleted: 1, createdAt: -1 }` |
+| users | `active_users_by_interest` | `{ isDeleted: 1, interests: 1 }` |
+| notes | `own_notes_by_created` | `{ owner: 1, isDeleted: 1, createdAt: -1 }` |
+| notes | `all_notes_by_created` | `{ isDeleted: 1, createdAt: -1 }` |
+| posts | `posts_by_author_created` | `{ author: 1, isDeleted: 1, createdAt: -1 }` |
 | refresh_tokens | `uniq_refresh_token_hash` | `{ tokenHash: 1 }` unique |
 | refresh_tokens | `user_sessions_by_expiry` | `{ user: 1, expiresAt: 1 }` |
 | refresh_tokens | `expired_sessions_ttl` | `{ expiresAt: 1 }` TTL, 24 h after expiry |
@@ -181,6 +181,43 @@ $match → $lookup (posts, sorted and paged in its sub-pipeline) → $unwind →
 `$match` on `_id`; the join uses `posts_by_author_created` on `author`, and the
 sub-pipeline's `$sort: { createdAt: -1 }` is that same index's trailing key, so the
 ordering is read rather than computed.
+
+## Soft deletion
+
+Nothing is ever removed. `BaseSchema` gives `users`, `notes` and `posts` two
+fields: `isDeleted`, the flag every read filters on, and `deletedAt`, the audit
+timestamp. A delete sets both; a read filters `isDeleted: false`.
+
+The filter is applied in one place per collection — the repository's private
+`live()` helper, which every query passes through — so a listing cannot include
+deleted rows by forgetting a clause. Repositories are the only classes that touch
+a collection, which is what makes that hold.
+
+`isDeleted` is an equality key inside each listing index, ahead of the sort key,
+so an active-only listing is still an index seek. `uniq_active_email` is partial
+on `isDeleted: false`, so deleting an account frees its address for reuse — which
+is why `unique: true` must not also be declared on the `email` prop: that would
+build a second, unconditional index and lock the address forever.
+
+Deleting an account cascades: its sessions are revoked and its notes and posts are
+flagged in the same step, because MongoDB has no `onDelete`. Without it a deleted
+user's notes would stay in the admin `GET /notes/all` listing, which filters notes
+and never joins the owner. The user row is flagged first, so a partial failure
+leaves content orphaned but unreachable, never an account that still works.
+
+Posts carry the fields, are filtered on read (including through the `$lookup` in
+`GET /users/:id/posts`) and are covered by the cascade, but have no delete route of
+their own yet.
+
+**Existing databases** need a one-time backfill, since documents written before
+this have no `isDeleted` field and would not match `isDeleted: false`:
+
+```js
+db.users.updateMany({ isDeleted: { $exists: false } }, [
+  { $set: { isDeleted: { $ne: ['$deletedAt', null] } } },
+]);
+// same for notes; posts take { $set: { isDeleted: false } }
+```
 
 ## Security
 

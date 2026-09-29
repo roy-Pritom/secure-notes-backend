@@ -11,5 +11,7 @@ import { Post, PostSchema } from './schemas/post.schema';
   ],
   controllers: [PostsController],
   providers: [PostsService],
+  // `UsersModule` cascades a deleted account onto its posts.
+  exports: [PostsService],
 })
 export class PostsModule {}

@@ -62,12 +62,12 @@ export const NoteSchema = SchemaFactory.createForClass(Note);
  * `createdAt` order. Reading a single note goes through `_id`.
  */
 NoteSchema.index(
-  { owner: 1, deletedAt: 1, createdAt: -1 },
+  { owner: 1, isDeleted: 1, createdAt: -1 },
   { name: 'own_notes_by_created' },
 );
 
 NoteSchema.index(
-  { deletedAt: 1, createdAt: -1 },
+  { isDeleted: 1, createdAt: -1 },
   { name: 'all_notes_by_created' },
 );
 

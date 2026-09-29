@@ -2,7 +2,7 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { ApiProperty } from '@nestjs/swagger';
 import { HydratedDocument, Model, Types } from 'mongoose';
 
-import { TimestampedSchema } from '../../../common/schemas/base.schema';
+import { BaseSchema } from '../../../common/schemas/base.schema';
 import { applyDocumentSerialization } from '../../../common/schemas/serialization';
 import { User } from '../../users/schemas/user.schema';
 
@@ -18,7 +18,7 @@ export const MAX_POST_BODY_LENGTH = 10_000;
   strict: 'throw',
   minimize: false,
 })
-export class Post extends TimestampedSchema {
+export class Post extends BaseSchema {
   @ApiProperty({ example: '6650f1a2b3c4d5e6f7a8b9c0' })
   @Prop({ type: Types.ObjectId, ref: User.name, required: true })
   author!: Types.ObjectId;
@@ -51,11 +51,13 @@ export type PostModel = Model<PostDocument>;
 export const PostSchema = SchemaFactory.createForClass(Post);
 
 /*
- * One index: the `$lookup` that joins a user to their posts, newest first.
- * `author` alone would serve the join but leave the sort in memory.
+ * One index: the `$lookup` that joins a user to their live posts, newest
+ * first. `author` alone would serve the join but leave the sort in memory,
+ * and `isDeleted` sits between the two equality keys and the sort key so the
+ * active-only filter is read from the index rather than applied after it.
  */
 PostSchema.index(
-  { author: 1, createdAt: -1 },
+  { author: 1, isDeleted: 1, createdAt: -1 },
   { name: 'posts_by_author_created' },
 );
 

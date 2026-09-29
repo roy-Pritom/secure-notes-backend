@@ -20,4 +20,18 @@ export class PostsService {
     const post = await this.postModel.create({ author, ...dto });
     return PostResponseDto.fromEntity(post);
   }
+
+  /**
+   * Cascade for a deleted account. Served by the `{ author, isDeleted }`
+   * prefix of `posts_by_author_created`.
+   */
+  async removeAllForAuthor(author: Types.ObjectId): Promise<number> {
+    const result = await this.postModel
+      .updateMany(
+        { author, isDeleted: false },
+        { $set: { isDeleted: true, deletedAt: new Date() } },
+      )
+      .exec();
+    return result.modifiedCount;
+  }
 }

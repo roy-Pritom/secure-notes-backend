@@ -15,6 +15,8 @@ import {
   PaginationService,
 } from '../../common/pagination';
 import { SECURITY_CONFIG_KEY, SecurityConfig } from '../../config';
+import { NotesService } from '../notes/notes.service';
+import { PostsService } from '../posts/posts.service';
 import { RefreshTokensService } from '../refresh-tokens/refresh-tokens.service';
 import {
   AdminUpdateUserDto,
@@ -41,6 +43,8 @@ export class UsersService {
   constructor(
     private readonly usersRepository: UsersRepository,
     private readonly refreshTokensService: RefreshTokensService,
+    private readonly notesService: NotesService,
+    private readonly postsService: PostsService,
     private readonly pagination: PaginationService,
     configService: ConfigService,
   ) {
@@ -148,12 +152,20 @@ export class UsersService {
     if (!deleted) {
       throw notFound(id);
     }
-    // MongoDB has no cascade, so deletion revokes the user's sessions here.
-    await this.refreshTokensService.revokeAllForUser(id);
-    this.logger.log(`Soft-deleted user ${id.toHexString()}`);
+    // MongoDB has no cascade, so everything the account owns is ended here.
+    // The user row is already flagged, so a partial failure below leaves
+    // content orphaned but unreachable, never an account that is still usable.
+    const [, notes, posts] = await Promise.all([
+      this.refreshTokensService.revokeAllForUser(id),
+      this.notesService.removeAllForOwner(id),
+      this.postsService.removeAllForAuthor(id),
+    ]);
+
+    this.logger.log(
+      `Soft-deleted user ${id.toHexString()} with ${notes} note(s) and ${posts} post(s)`,
+    );
   }
 
-  /** Scenario 1 — the grouped-by-interest view. */
   async findInterestGroups(
     query: QueryInterestsDto,
   ): Promise<PaginatedResponseDto<InterestGroupDto>> {
@@ -163,7 +175,6 @@ export class UsersService {
     );
   }
 
-  /** Scenario 2 — a user's posts, joined in one pipeline. */
   async findPosts(
     id: Types.ObjectId,
     query: PaginationQueryDto,
@@ -185,7 +196,6 @@ export class UsersService {
     return this.usersRepository.findByEmail(email, true);
   }
 
-  /** A live (not soft-deleted) user, or `null`. */
   findActiveById(id: Types.ObjectId): Promise<UserDocument | null> {
     return this.usersRepository.findById(id);
   }

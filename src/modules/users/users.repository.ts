@@ -28,9 +28,8 @@ export class UsersRepository {
     private readonly pagination: PaginationService,
   ) {}
 
-  /** Scopes a filter to live documents. */
   private live(filter: UserFilter = {}): UserFilter {
-    return { ...filter, deletedAt: null };
+    return { ...filter, isDeleted: false };
   }
 
   async create(data: CreateUserData): Promise<UserDocument> {
@@ -95,10 +94,11 @@ export class UsersRepository {
    * revoked by `UsersService`, which owns the `refresh_tokens` collaborator.
    */
   async softDeleteById(id: Types.ObjectId): Promise<UserDocument | null> {
-    return this.updateById(id, { $set: { deletedAt: new Date() } });
+    return this.updateById(id, {
+      $set: { isDeleted: true, deletedAt: new Date() },
+    });
   }
 
-  /** Scenario 1: users grouped by interest, in a single aggregation call. */
   async groupByInterests(
     query: QueryInterestsDto,
   ): Promise<InterestGroupsResult> {
@@ -108,7 +108,6 @@ export class UsersRepository {
     return result ?? { items: [], total: 0 };
   }
 
-  /** Scenario 2: one user joined to their posts through a single `$lookup`. */
   async findWithPosts(
     userId: Types.ObjectId,
     query: PaginationQueryDto,

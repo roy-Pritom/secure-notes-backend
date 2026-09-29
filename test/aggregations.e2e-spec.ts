@@ -132,7 +132,7 @@ describe('Aggregations (e2e)', () => {
         explain: {
           aggregate: 'users',
           pipeline: [
-            { $match: { deletedAt: null, interests: 'chess' } },
+            { $match: { isDeleted: false, interests: 'chess' } },
             { $unwind: '$interests' },
             { $group: { _id: '$interests', userCount: { $sum: 1 } } },
           ],
@@ -188,7 +188,7 @@ describe('Aggregations (e2e)', () => {
     it("reads an author's posts in order straight from the index", async () => {
       const explain = (await harness.connection
         .collection('posts')
-        .find({ author: new Types.ObjectId(ada.id) })
+        .find({ author: new Types.ObjectId(ada.id), isDeleted: false })
         .sort({ createdAt: -1 })
         .explain()) as unknown;
 

@@ -32,6 +32,9 @@ export class User extends BaseSchema {
     lowercase: true,
     maxlength: MAX_EMAIL_LENGTH,
     match: EMAIL_PATTERN,
+    // Uniqueness is declared as the partial `uniq_active_email` index below,
+    // not here: `unique: true` on the prop would build a second, unconditional
+    // index and a deleted account's address could never be reused.
   })
   email!: string;
 
@@ -74,7 +77,6 @@ export class User extends BaseSchema {
   })
   status!: UserStatus;
 
-  /** Profile tags such as `['chess', 'reading']`, grouped by the interests view. */
   @ApiProperty({ example: ['chess', 'reading'], isArray: true, type: String })
   @Prop({
     type: [String],
@@ -123,20 +125,20 @@ UserSchema.index(
   { email: 1 },
   {
     unique: true,
-    partialFilterExpression: { deletedAt: null },
+    partialFilterExpression: { isDeleted: false },
     name: 'uniq_active_email',
   },
 );
 
 UserSchema.index(
-  { deletedAt: 1, createdAt: -1 },
+  { isDeleted: 1, createdAt: -1 },
   { name: 'active_users_by_created' },
 );
 
 // Multikey: serves the `$match` + `$unwind`/`$group` on interests, and the
 // optional single-interest filter on that view.
 UserSchema.index(
-  { deletedAt: 1, interests: 1 },
+  { isDeleted: 1, interests: 1 },
   { name: 'active_users_by_interest' },
 );
 
