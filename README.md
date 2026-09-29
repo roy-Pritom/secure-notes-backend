@@ -26,10 +26,37 @@ An admin inherits every user capability: no route requires the `user` role, so a
 administrator is simply a user who also passes the admin checks. Reading everyone's
 notes is deliberately not the same as editing them — only an owner may write.
 
+## Guards
+
+The three guards live together in [`src/common/guards`](src/common/guards) and are all
+registered globally, so a new route is protected by default and opts out explicitly.
+They run in this order:
+
+| Guard | Answers | Opt out with |
+| --- | --- | --- |
+| `ApiKeyGuard` | Is this a known client application? | `@SkipApiKey()` |
+| `JwtAuthGuard` | Which user is calling? | `@Public()` |
+| `RolesGuard` | May that user do this? | *(no `@Roles()` on the route)* |
+
+The order is what makes the stack useful: an unknown client is turned away by
+`ApiKeyGuard` before any credential is read, which is why `@Public()` does **not**
+exempt a route from the key — `login` and `register` are public to people, not to
+anonymous clients. Only the health probes carry `@SkipApiKey()`, because
+orchestrators and load balancers cannot be taught to send one.
+
+`JwtAuthGuard` resolves the bearer token onto `request.user`, so `RolesGuard` and the
+`@CurrentUser()` / `@CurrentUserId()` decorators can rely on it being there. Ownership
+is *not* a guard: it depends on the record, so it is enforced in `NotesService` where
+the note is already loaded.
+
+Client keys come from `API_KEYS` (comma-separated, one per client). Leave it empty and
+the gate is inert — convenient locally and in the e2e suite — while the environment
+refuses to boot in production without at least one key.
+
 ## Running it
 
 ```bash
-cp .env.example .env          # then set JWT_SECRET and JWT_REFRESH_SECRET
+cp .env.example .env          # then set JWT_SECRET, JWT_REFRESH_SECRET, API_KEYS
 docker compose up -d mongo
 pnpm install
 pnpm start:dev
@@ -49,8 +76,10 @@ pnpm typecheck && pnpm lint && pnpm build
 
 ## API
 
-All routes are versioned under `/api/v1` and require a bearer token unless marked
-public. Every list endpoint takes `page`, `limit` (≤ 100) and `sortOrder`.
+All routes are versioned under `/api/v1`. Every route needs a valid `x-api-key`
+header once `API_KEYS` is set — the health probes are the only exception — and a
+bearer token on top of that unless marked public. Every list endpoint takes `page`,
+`limit` (≤ 100) and `sortOrder`.
 
 | Method | Path | Access | Purpose |
 | --- | --- | --- | --- |
@@ -129,6 +158,9 @@ ordering is read rather than computed.
 
 ## Security
 
+- **Client keys** — an `x-api-key` gate in front of everything but the probes. Only
+  the SHA-256 digests are held in memory, the comparison is timing-safe, and missing
+  and wrong keys return the same message, so the header cannot be probed.
 - **Passwords** — bcrypt with a configurable cost; the hash is `select: false` and is
   stripped again at serialization, so it cannot leak through a forgotten projection.
 - **Tokens** — access and refresh are signed with *different* secrets, and the

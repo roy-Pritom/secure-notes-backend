@@ -6,6 +6,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 import { AppModule } from './app.module';
 import { configureApp } from './app.setup';
+import { API_KEY_HEADER } from './common/guards';
 import { APP_CONFIG_KEY, AppConfig } from './config';
 
 async function bootstrap(): Promise<void> {
@@ -26,6 +27,13 @@ async function bootstrap(): Promise<void> {
         .setDescription('REST API backed by MongoDB')
         .setVersion('1.0')
         .addBearerAuth()
+        .addApiKey(
+          { type: 'apiKey', name: API_KEY_HEADER, in: 'header' },
+          API_KEY_HEADER,
+        )
+        // Every route is behind the client key, so require it document-wide
+        // rather than repeating `@ApiSecurity()` on each controller.
+        .addSecurityRequirements(API_KEY_HEADER)
         .build(),
     );
     SwaggerModule.setup(`${appConfig.apiPrefix}/docs`, app, document);

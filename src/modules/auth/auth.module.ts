@@ -3,11 +3,11 @@ import { ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 
+import { JwtAuthGuard, RolesGuard } from '../../common/guards';
 import { SECURITY_CONFIG_KEY, SecurityConfig } from '../../config';
 import { UsersModule } from '../users/users.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
-import { JwtAuthGuard, RolesGuard } from './guards';
 import { TokenService } from './token.service';
 
 @Module({
@@ -29,6 +29,7 @@ import { TokenService } from './token.service';
     AuthService,
     TokenService,
     // Every route is authenticated and role-checked unless it opts out.
+    // Both run after `ApiKeyGuard`, which `AppModule` registers first.
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],

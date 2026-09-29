@@ -7,9 +7,9 @@ import {
 import { Reflector } from '@nestjs/core';
 import { Request } from 'express';
 
-import { UserRole } from '../../users/enums';
-import { ROLES_KEY } from '../decorators';
-import { AuthenticatedUser } from '../types';
+import { ROLES_KEY } from '../../modules/auth/decorators';
+import { AuthenticatedUser } from '../../modules/auth/types';
+import { UserRole } from '../../modules/users/enums';
 
 /** Enforces `@Roles()`. Runs after `JwtAuthGuard`, so `request.user` is set. */
 @Injectable()

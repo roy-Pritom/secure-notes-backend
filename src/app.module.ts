@@ -4,6 +4,7 @@ import { APP_FILTER, APP_GUARD, APP_PIPE } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 
 import { AllExceptionsFilter } from './common/filters';
+import { ApiKeyGuard } from './common/guards';
 import { AppValidationPipe } from './common/pipes/app-validation.pipe';
 import { ConfigModule, SECURITY_CONFIG_KEY, SecurityConfig } from './config';
 import { DatabaseModule } from './database/database.module';
@@ -42,7 +43,12 @@ import { UsersModule } from './modules/users/users.module';
     // Registered as providers so they take part in DI and stay active in
     // e2e tests that build the module directly.
     { provide: APP_PIPE, useClass: AppValidationPipe },
+    // Guard order follows registration order, and `AppModule` is scanned
+    // before its imports: rate limit, then client key, then the bearer token
+    // and role checks `AuthModule` registers. An unknown client is rejected
+    // before any credential is read.
     { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: ApiKeyGuard },
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
   ],
 })

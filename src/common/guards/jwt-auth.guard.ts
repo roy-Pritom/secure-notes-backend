@@ -8,8 +8,8 @@ import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
 
-import { IS_PUBLIC_KEY } from '../decorators';
-import { AuthenticatedUser, JwtPayload } from '../types';
+import { IS_PUBLIC_KEY } from '../../modules/auth/decorators';
+import { AuthenticatedUser, JwtPayload } from '../../modules/auth/types';
 
 /**
  * Applied globally, so a new route is protected unless it is explicitly

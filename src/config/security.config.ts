@@ -12,6 +12,8 @@ export interface SecurityConfig {
   accountLockMs: number;
   throttleTtlMs: number;
   throttleLimit: number;
+  /** Accepted `x-api-key` values. Empty disables the gate outside production. */
+  apiKeys: string[];
   /** Optional first administrator, created once on boot. */
   bootstrapAdmin: { email: string; password: string } | null;
 }
@@ -26,6 +28,10 @@ export default registerAs<SecurityConfig>(SECURITY_CONFIG_KEY, () => ({
   accountLockMs: Number(process.env.LOGIN_LOCK_MS ?? 900_000),
   throttleTtlMs: Number(process.env.THROTTLE_TTL_MS ?? 60_000),
   throttleLimit: Number(process.env.THROTTLE_LIMIT ?? 100),
+  apiKeys: (process.env.API_KEYS ?? '')
+    .split(',')
+    .map((key) => key.trim())
+    .filter(Boolean),
   bootstrapAdmin:
     process.env.BOOTSTRAP_ADMIN_EMAIL && process.env.BOOTSTRAP_ADMIN_PASSWORD
       ? {

@@ -9,7 +9,13 @@ import request from 'supertest';
 import { AppModule } from '../../src/app.module';
 import { configureApp } from '../../src/app.setup';
 import { APP_CONFIG_KEY, AppConfig } from '../../src/config';
+import { API_KEY_HEADER } from '../../src/common/guards';
 import { UserRole } from '../../src/modules/users/enums';
+
+export interface HarnessOptions {
+  /** Keys the `x-api-key` gate accepts. Empty (the default) leaves it inert. */
+  apiKeys?: string[];
+}
 
 export interface Harness {
   app: NestExpressApplication;
@@ -34,7 +40,10 @@ export const PASSWORD = 'C0rrect-Horse-Battery!';
 export const BOOTSTRAP_ADMIN_EMAIL = 'bootstrap-admin@example.test';
 
 /** Boots the real AppModule — config, guards, pipes, filters — on a fresh mongod. */
-export async function startHarness(dbName: string): Promise<Harness> {
+export async function startHarness(
+  dbName: string,
+  options: HarnessOptions = {},
+): Promise<Harness> {
   const mongod = await MongoMemoryServer.create();
 
   // Set before the module is built: dotenv never overrides what is already
@@ -48,6 +57,9 @@ export async function startHarness(dbName: string): Promise<Harness> {
   // Pinned so the seeded administrator cannot collide with a test account.
   process.env.BOOTSTRAP_ADMIN_EMAIL = BOOTSTRAP_ADMIN_EMAIL;
   process.env.BOOTSTRAP_ADMIN_PASSWORD = PASSWORD;
+  // Always assigned, never merely defaulted: a key left over in `.env` or from
+  // an earlier spec in the same worker would otherwise gate every request here.
+  process.env.API_KEYS = (options.apiKeys ?? []).join(',');
 
   const moduleRef = await Test.createTestingModule({
     imports: [AppModule],
@@ -126,3 +138,5 @@ export const auth = (account: Account): [string, string] => [
   'Authorization',
   `Bearer ${account.accessToken}`,
 ];
+
+export const apiKey = (key: string): [string, string] => [API_KEY_HEADER, key];

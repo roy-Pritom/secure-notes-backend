@@ -11,6 +11,7 @@ import {
   Max,
   Min,
   MinLength,
+  ValidateIf,
   validateSync,
 } from 'class-validator';
 
@@ -122,6 +123,19 @@ export class EnvironmentVariables {
   @IsInt()
   @Min(1)
   THROTTLE_LIMIT: number = 100;
+
+  /**
+   * Comma-separated client keys accepted in the `x-api-key` header. Empty
+   * leaves the gate open for local development; production must name one.
+   */
+  @ValidateIf(
+    (env: EnvironmentVariables) => env.NODE_ENV === NodeEnv.Production,
+  )
+  @IsString()
+  @IsNotEmpty({
+    message: 'API_KEYS must list at least one key when NODE_ENV=production',
+  })
+  API_KEYS: string = '';
 
   /** Set both to create the first administrator on boot; omit both to skip it. */
   @IsEmail()
