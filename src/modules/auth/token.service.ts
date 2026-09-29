@@ -7,7 +7,6 @@ import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 import { SECURITY_CONFIG_KEY, SecurityConfig } from '../../config';
 import { JwtPayload, TokenPair } from './types';
 
-
 type Expiry = JwtSignOptions['expiresIn'];
 
 /** Signs and verifies the token pair. Access and refresh use separate secrets. */
@@ -24,7 +23,6 @@ export class TokenService {
   }
 
   async issuePair(payload: JwtPayload): Promise<TokenPair> {
-
     const sign = (secret: string, expiresIn: string): Promise<string> =>
       this.jwtService.signAsync(
         { ...payload, jti: randomUUID() },
@@ -43,7 +41,6 @@ export class TokenService {
     const { exp } = this.jwtService.decode<{ exp: number }>(token);
     return new Date(exp * 1000);
   }
-
 
   verifyRefreshToken(token: string): Promise<JwtPayload> {
     return this.jwtService.verifyAsync<JwtPayload>(token, {

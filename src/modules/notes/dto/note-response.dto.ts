@@ -24,7 +24,8 @@ export class NoteResponseDto {
     };
   }
 
-  static fromEntities(notes: NoteSource[]): NoteResponseDto[] {
+  /** `this: void` so it can be passed straight to `PaginationService`. */
+  static fromEntities(this: void, notes: NoteSource[]): NoteResponseDto[] {
     return notes.map((note) => NoteResponseDto.fromEntity(note));
   }
 }

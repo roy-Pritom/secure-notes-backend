@@ -5,8 +5,11 @@ import {
 } from '@nestjs/common';
 import { Types } from 'mongoose';
 
-import { PaginatedResponseDto } from '../../common/dto/paginated-response.dto';
-import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
+import {
+  PaginatedResponseDto,
+  PaginationQueryDto,
+  PaginationService,
+} from '../../common/pagination';
 import { AuthenticatedUser } from '../../common/types';
 import { UserRole } from '../users/enums';
 import { CreateNoteDto, NoteResponseDto, UpdateNoteDto } from './dto';
@@ -15,7 +18,10 @@ import { NoteDocument } from './schemas/note.schema';
 
 @Injectable()
 export class NotesService {
-  constructor(private readonly notesRepository: NotesRepository) {}
+  constructor(
+    private readonly notesRepository: NotesRepository,
+    private readonly pagination: PaginationService,
+  ) {}
 
   async create(
     owner: Types.ObjectId,
@@ -30,16 +36,21 @@ export class NotesService {
     owner: Types.ObjectId,
     query: PaginationQueryDto,
   ): Promise<PaginatedResponseDto<NoteResponseDto>> {
-    return this.page(
+    return this.pagination.toResponse(
       await this.notesRepository.findPaginated(query, owner),
       query,
+      NoteResponseDto.fromEntities,
     );
   }
 
   async findAll(
     query: PaginationQueryDto,
   ): Promise<PaginatedResponseDto<NoteResponseDto>> {
-    return this.page(await this.notesRepository.findPaginated(query), query);
+    return this.pagination.toResponse(
+      await this.notesRepository.findPaginated(query),
+      query,
+      NoteResponseDto.fromEntities,
+    );
   }
 
   async findOne(
@@ -95,18 +106,6 @@ export class NotesService {
       throw new ForbiddenException('Only the owner can modify this note');
     }
     return note;
-  }
-
-  private page(
-    result: { items: NoteDocument[]; total: number },
-    query: PaginationQueryDto,
-  ): PaginatedResponseDto<NoteResponseDto> {
-    return PaginatedResponseDto.build(
-      NoteResponseDto.fromEntities(result.items),
-      result.total,
-      query.page,
-      query.limit,
-    );
   }
 }
 

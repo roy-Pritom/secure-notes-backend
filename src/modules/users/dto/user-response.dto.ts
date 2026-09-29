@@ -75,7 +75,8 @@ export class UserResponseDto {
     return dto;
   }
 
-  static fromEntities(users: UserSource[]): UserResponseDto[] {
+  /** `this: void` so it can be passed straight to `PaginationService`. */
+  static fromEntities(this: void, users: UserSource[]): UserResponseDto[] {
     return users.map((user) => UserResponseDto.fromEntity(user));
   }
 }

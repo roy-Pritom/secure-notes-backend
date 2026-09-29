@@ -9,8 +9,11 @@ import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { Types } from 'mongoose';
 
-import { PaginatedResponseDto } from '../../common/dto/paginated-response.dto';
-import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
+import {
+  PaginatedResponseDto,
+  PaginationQueryDto,
+  PaginationService,
+} from '../../common/pagination';
 import { SECURITY_CONFIG_KEY, SecurityConfig } from '../../config';
 import { RefreshTokensService } from '../refresh-tokens/refresh-tokens.service';
 import {
@@ -38,6 +41,7 @@ export class UsersService {
   constructor(
     private readonly usersRepository: UsersRepository,
     private readonly refreshTokensService: RefreshTokensService,
+    private readonly pagination: PaginationService,
     configService: ConfigService,
   ) {
     this.security =
@@ -82,12 +86,10 @@ export class UsersService {
   async findAll(
     query: PaginationQueryDto,
   ): Promise<PaginatedResponseDto<UserResponseDto>> {
-    const { items, total } = await this.usersRepository.findPaginated(query);
-    return PaginatedResponseDto.build(
-      UserResponseDto.fromEntities(items),
-      total,
-      query.page,
-      query.limit,
+    return this.pagination.toResponse(
+      await this.usersRepository.findPaginated(query),
+      query,
+      UserResponseDto.fromEntities,
     );
   }
 
@@ -155,8 +157,10 @@ export class UsersService {
   async findInterestGroups(
     query: QueryInterestsDto,
   ): Promise<PaginatedResponseDto<InterestGroupDto>> {
-    const { items, total } = await this.usersRepository.groupByInterests(query);
-    return PaginatedResponseDto.build(items, total, query.page, query.limit);
+    return this.pagination.toResponse(
+      await this.usersRepository.groupByInterests(query),
+      query,
+    );
   }
 
   /** Scenario 2 — a user's posts, joined in one pipeline. */
@@ -169,13 +173,10 @@ export class UsersService {
       throw notFound(id);
     }
 
-    const page = PaginatedResponseDto.build(
-      result.items,
-      result.total,
-      query.page,
-      query.limit,
-    );
-    return { author: result.author, ...page };
+    return {
+      author: result.author,
+      ...this.pagination.toResponse(result, query),
+    };
   }
 
   /* ----------------------------------------------------- auth collaborators */

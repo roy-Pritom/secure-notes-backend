@@ -2,7 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { ProjectionType, QueryOptions, Types, UpdateQuery } from 'mongoose';
 
-import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
+import {
+  PagedResult,
+  PaginationQueryDto,
+  PaginationService,
+} from '../../common/pagination';
 import { interestGroupsPipeline, userPostsPipeline } from './aggregations';
 import { QueryInterestsDto } from './dto';
 import { User, type UserDocument, type UserModel } from './schemas/user.schema';
@@ -19,7 +23,10 @@ import {
  */
 @Injectable()
 export class UsersRepository {
-  constructor(@InjectModel(User.name) private readonly userModel: UserModel) {}
+  constructor(
+    @InjectModel(User.name) private readonly userModel: UserModel,
+    private readonly pagination: PaginationService,
+  ) {}
 
   /** Scopes a filter to live documents. */
   private live(filter: UserFilter = {}): UserFilter {
@@ -61,20 +68,12 @@ export class UsersRepository {
   /** Served by `active_users_by_created`. */
   async findPaginated(
     query: PaginationQueryDto,
-  ): Promise<{ items: UserDocument[]; total: number }> {
-    const filter = this.live();
-
-    const [items, total] = await Promise.all([
-      this.userModel
-        .find(filter)
-        .sort({ createdAt: query.createdAtSort })
-        .skip(query.skip)
-        .limit(query.limit)
-        .exec(),
-      this.userModel.countDocuments(filter).exec(),
-    ]);
-
-    return { items, total };
+  ): Promise<PagedResult<UserDocument>> {
+    return this.pagination.fetchPage<UserDocument>(
+      this.userModel,
+      this.live(),
+      query,
+    );
   }
 
   async updateById(

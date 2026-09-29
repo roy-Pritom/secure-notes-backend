@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-import { PaginatedResult, PaginationMeta } from '../types';
+import { PaginatedResult, PaginationMeta } from './pagination.types';
 
 export class PaginationMetaDto implements PaginationMeta {
   @ApiProperty({ example: 137 }) total!: number;
@@ -16,24 +16,4 @@ export class PaginatedResponseDto<T> implements PaginatedResult<T> {
 
   @ApiProperty({ type: PaginationMetaDto })
   meta!: PaginationMetaDto;
-
-  static build<T>(
-    items: T[],
-    total: number,
-    page: number,
-    limit: number,
-  ): PaginatedResponseDto<T> {
-    const totalPages = limit > 0 ? Math.ceil(total / limit) : 0;
-    return {
-      items,
-      meta: {
-        total,
-        page,
-        limit,
-        totalPages,
-        hasNextPage: page < totalPages,
-        hasPreviousPage: page > 1,
-      },
-    };
-  }
 }

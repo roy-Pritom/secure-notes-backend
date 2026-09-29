@@ -26,7 +26,6 @@ export class RefreshTokensRepository {
     return this.refreshTokenModel.findOne({ tokenHash }).exec();
   }
 
- 
   async revokeById(id: Types.ObjectId): Promise<boolean> {
     const result = await this.refreshTokenModel
       .updateOne(

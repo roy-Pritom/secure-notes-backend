@@ -1,5 +1,7 @@
 import { FilterQuery } from 'mongoose';
 
+import { PagedResult } from '../../../common/pagination';
+
 import { AuthoredPostDto } from '../dto/user-posts.dto';
 import { InterestGroupDto, InterestMemberDto } from '../dto/interest-group.dto';
 import { User } from '../schemas/user.schema';
@@ -16,14 +18,10 @@ export interface CreateUserData {
 
 export type UserFilter = FilterQuery<User>;
 
-/** Shape returned by a `$facet` tail: one page plus the unpaged total. */
-export interface AggregatedPage<T> {
-  items: T[];
-  total: number;
-}
+// A `$facet` tail returns the same shape a paged `find()` does, so it reuses
+// `PagedResult` rather than declaring a second name for it.
+export type InterestGroupsResult = PagedResult<InterestGroupDto>;
 
-export type InterestGroupsResult = AggregatedPage<InterestGroupDto>;
-
-export interface UserPostsResult extends AggregatedPage<AuthoredPostDto> {
+export interface UserPostsResult extends PagedResult<AuthoredPostDto> {
   author: InterestMemberDto;
 }

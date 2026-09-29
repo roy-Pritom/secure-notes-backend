@@ -8,7 +8,6 @@ import { User } from '../../users/schemas/user.schema';
 
 export const REFRESH_TOKEN_COLLECTION = 'refresh_tokens';
 
-
 export const EXPIRED_SESSION_GRACE_SECONDS = 86_400;
 
 @Schema({
@@ -31,11 +30,9 @@ export class RefreshToken extends TimestampedSchema {
   @Prop({ type: String, required: true })
   tokenHash!: string;
 
-
   @ApiProperty({ type: Date })
   @Prop({ type: Date, required: true })
   expiresAt!: Date;
-
 
   @ApiProperty({ type: Date, nullable: true })
   @Prop({ type: Date, default: null })
@@ -51,7 +48,6 @@ export type RefreshTokenDocument = HydratedDocument<RefreshToken> &
 export type RefreshTokenModel = Model<RefreshTokenDocument>;
 
 export const RefreshTokenSchema = SchemaFactory.createForClass(RefreshToken);
-
 
 RefreshTokenSchema.index(
   { tokenHash: 1 },

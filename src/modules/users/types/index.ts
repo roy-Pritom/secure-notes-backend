@@ -1,5 +1,4 @@
 export type {
-  AggregatedPage,
   CreateUserData,
   InterestGroupsResult,
   UserFilter,

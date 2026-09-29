@@ -25,8 +25,10 @@ import {
 import { Types } from 'mongoose';
 
 import { Roles } from '../../common/decorators';
-import { PaginatedResponseDto } from '../../common/dto/paginated-response.dto';
-import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
+import {
+  PaginatedResponseDto,
+  PaginationQueryDto,
+} from '../../common/pagination';
 import { JwtAuthGuard, RolesGuard } from '../../common/guards';
 import { ParseObjectIdPipe } from '../../common/pipes/parse-object-id.pipe';
 import { API_VERSION } from '../../utils/constant';
@@ -41,10 +43,7 @@ import {
 import { UserRole } from './enums';
 import { UsersService } from './users.service';
 
-/**
- * User administration. Authorization is declared per route rather than on the
- * class, so the one public-to-any-user route below cannot inherit it by mistake.
- */
+
 @ApiTags('users')
 @ApiBearerAuth()
 @ApiForbiddenResponse({ description: 'Requires the admin role' })
@@ -71,7 +70,7 @@ export class UsersController {
     return this.usersService.findAll(query);
   }
 
-  // Declared before `:id` so the literal segment wins the route match.
+  
   @Roles(UserRole.Admin)
   @Get('interests')
   @ApiOperation({ summary: 'Users grouped by interest (aggregation)' })

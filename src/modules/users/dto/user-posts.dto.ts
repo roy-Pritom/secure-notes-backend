@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-import { PaginationMetaDto } from '../../../common/dto/paginated-response.dto';
+import { PaginationMetaDto } from '../../../common/pagination';
 import { InterestMemberDto } from './interest-group.dto';
 
 export class AuthoredPostDto {

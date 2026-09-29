@@ -24,8 +24,10 @@ import {
 import { Types } from 'mongoose';
 
 import { CurrentUser, CurrentUserId, Roles } from '../../common/decorators';
-import { PaginatedResponseDto } from '../../common/dto/paginated-response.dto';
-import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
+import {
+  PaginatedResponseDto,
+  PaginationQueryDto,
+} from '../../common/pagination';
 import { JwtAuthGuard, RolesGuard } from '../../common/guards';
 import { ParseObjectIdPipe } from '../../common/pipes/parse-object-id.pipe';
 import type { AuthenticatedUser } from '../../common/types';

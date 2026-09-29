@@ -5,7 +5,6 @@ import { hashToken } from '../../common/utils';
 import { RefreshTokensRepository } from './refresh-tokens.repository';
 import { RefreshTokenDocument } from './schemas/refresh-token.schema';
 
-
 @Injectable()
 export class RefreshTokensService {
   private readonly logger = new Logger(RefreshTokensService.name);

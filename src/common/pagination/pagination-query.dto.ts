@@ -6,11 +6,6 @@ import { toLowerCase } from '../transformers';
 
 export type SortOrder = 'asc' | 'desc';
 
-/**
- * Every list endpoint sorts by `createdAt`, which is the trailing key of each
- * listing index. There is deliberately no `sortBy`: an arbitrary sort field
- * would need an index nobody asked for, or an in-memory sort.
- */
 export class PaginationQueryDto {
   @ApiPropertyOptional({ minimum: 1, default: 1 })
   @Type(() => Number)
