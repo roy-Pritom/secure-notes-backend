@@ -2,24 +2,20 @@ import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 
 import { AppModule } from '../app.module';
-import { IndexSyncService } from '../database/index-sync.service';
+import { SearchTokensBackfillService } from '../database/search-tokens-backfill.service';
 
-const logger = new Logger('db:indexes');
+const logger = new Logger('db:search-tokens');
 
-/**
- * Deploy step: build the indexes the schemas declare, then exit. Run it before
- * the new code takes traffic — production does not build indexes on boot.
- * `--prune` also drops indexes no schema declares any more.
- */
+/** Deploy step: tokenize documents that predate `searchTokens`, then exit. */
 async function main(): Promise<void> {
-  // A full context without a listener: nothing here needs an HTTP server.
   const context = await NestFactory.createApplicationContext(AppModule, {
     bufferLogs: true,
   });
   context.useLogger(logger);
 
   try {
-    await context.get(IndexSyncService).sync(process.argv.includes('--prune'));
+    const filled = await context.get(SearchTokensBackfillService).backfill();
+    logger.log(`Backfill complete — ${filled} document(s) tokenized`);
   } finally {
     await context.close();
   }

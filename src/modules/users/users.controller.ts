@@ -24,11 +24,12 @@ import {
 } from '@nestjs/swagger';
 import { Types } from 'mongoose';
 
-import { Roles } from '../../common/decorators';
+import { CurrentUser, Roles } from '../../common/decorators';
 import { PaginatedResponseDto } from '../../common/pagination';
 import { SearchQueryDto } from '../../common/search';
 import { JwtAuthGuard, RolesGuard } from '../../common/guards';
 import { ParseObjectIdPipe } from '../../common/pipes/parse-object-id.pipe';
+import type { AuthenticatedUser } from '../../common/types';
 import { API_VERSION } from '../../utils/constant';
 import {
   AdminUpdateUserDto,
@@ -112,19 +113,22 @@ export class UsersController {
     return this.usersService.remove(id);
   }
 
-  /** Posts are public content: any signed-in user may read them. */
+  /** Published posts are public: any signed-in user may read them. */
   @Get(':id/posts')
   @ApiOperation({
     summary: "Fetch a user's posts through a single $lookup",
     description:
-      '`searchTerm` matches, case-insensitively, any part of a title, body, excerpt or tag.',
+      'Drafts are included only when the caller is the author or an admin; for anyone else ' +
+      'they are left out of both `items` and `meta.total`. `searchTerm` matches, ' +
+      'case-insensitively, whole words or the start of words in a title, body, excerpt or tag.',
   })
   @ApiOkResponse({ type: UserPostsDto })
   @ApiNotFoundResponse({ description: 'User does not exist' })
   findPosts(
     @Param('id', ParseObjectIdPipe) id: Types.ObjectId,
     @Query() query: SearchQueryDto,
+    @CurrentUser() caller: AuthenticatedUser,
   ): Promise<UserPostsDto> {
-    return this.usersService.findPosts(id, query);
+    return this.usersService.findPosts(id, query, caller);
   }
 }

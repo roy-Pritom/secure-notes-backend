@@ -14,6 +14,7 @@ import {
   PaginationService,
 } from '../../common/pagination';
 import { SearchQueryDto } from '../../common/search';
+import { AuthenticatedUser } from '../../common/types';
 import { SECURITY_CONFIG_KEY, SecurityConfig } from '../../config';
 import { NotesService } from '../notes/notes.service';
 import { PostsService } from '../posts/posts.service';
@@ -182,8 +183,17 @@ export class UsersService {
   async findPosts(
     id: Types.ObjectId,
     query: SearchQueryDto,
+    caller: AuthenticatedUser,
   ): Promise<UserPostsDto> {
-    const result = await this.usersRepository.findWithPosts(id, query);
+    // Decided here, not in the UI: a draft left out of the response is the
+    // only kind that cannot leak.
+    const includeDrafts =
+      caller.id === id.toHexString() || caller.roles.includes(UserRole.Admin);
+    const result = await this.usersRepository.findWithPosts(
+      id,
+      query,
+      includeDrafts,
+    );
     if (!result) {
       throw notFound(id);
     }

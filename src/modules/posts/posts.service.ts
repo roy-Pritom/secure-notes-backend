@@ -37,7 +37,7 @@ export class PostsService {
 
   /**
    * Cascade for a deleted account. Served by the `{ author, isDeleted }`
-   * prefix of `posts_by_author_created`.
+   * prefix of `posts_by_author_status_created`.
    */
   async removeAllForAuthor(author: Types.ObjectId): Promise<number> {
     const result = await this.postModel

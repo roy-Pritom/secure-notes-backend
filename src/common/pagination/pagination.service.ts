@@ -10,22 +10,29 @@ export class PaginationService {
   /**
    * @param sort overrides the default `createdAt` ordering — for a listing
    * whose index puts another key first, such as notes pinned to the top.
+   * @param hint pins the index, for the page and the count alike. Used for
+   * search, where the planner would otherwise be free to prefer the index that
+   * stores the sort order and test every row it walks against the term.
    */
   async fetchPage<TDoc>(
     model: Model<TDoc>,
     filter: FilterQuery<TDoc>,
     query: PaginationQueryDto,
     sort?: SortSpec,
+    hint?: string,
   ): Promise<PagedResult<TDoc>> {
-    const [items, total] = await Promise.all([
-      model
-        .find(filter)
-        .sort(sort ?? { createdAt: query.createdAtSort })
-        .skip(query.skip)
-        .limit(query.limit)
-        .exec(),
-      model.countDocuments(filter).exec(),
-    ]);
+    const page = model
+      .find(filter)
+      .sort(sort ?? { createdAt: query.createdAtSort })
+      .skip(query.skip)
+      .limit(query.limit);
+    const count = model.countDocuments(filter);
+    if (hint) {
+      page.hint(hint);
+      count.hint(hint);
+    }
+
+    const [items, total] = await Promise.all([page.exec(), count.exec()]);
 
     return { items: items as TDoc[], total };
   }

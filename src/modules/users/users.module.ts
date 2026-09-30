@@ -5,7 +5,6 @@ import { PaginationModule } from '../../common/pagination';
 import { NotesModule } from '../notes/notes.module';
 import { PostsModule } from '../posts/posts.module';
 import { RefreshTokensModule } from '../refresh-tokens/refresh-tokens.module';
-import { AdminBootstrapService } from './admin-bootstrap.service';
 import { ProfileController } from './profile.controller';
 import { User, UserSchema } from './schemas/user.schema';
 import { UsersController } from './users.controller';
@@ -23,7 +22,7 @@ import { UsersService } from './users.service';
     PostsModule,
   ],
   controllers: [UsersController, ProfileController],
-  providers: [UsersService, UsersRepository, AdminBootstrapService],
+  providers: [UsersService, UsersRepository],
   // Only the service is exported: other modules must not reach the collection.
   exports: [UsersService],
 })

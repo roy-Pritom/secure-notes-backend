@@ -8,7 +8,7 @@ import { Types } from 'mongoose';
 
 import { RefreshTokensService } from '../refresh-tokens/refresh-tokens.service';
 import { UserResponseDto } from '../users/dto';
-import { UserStatus } from '../users/enums';
+import { UserRole, UserStatus } from '../users/enums';
 import { UsersService } from '../users/users.service';
 import { AuthResponseDto, LoginDto, RegisterDto } from './dto';
 import { TokenService } from './token.service';
@@ -32,6 +32,24 @@ export class AuthService {
 
   async register(dto: RegisterDto): Promise<AuthResponseDto> {
     const user = await this.usersService.create(dto);
+    return this.grant(new Types.ObjectId(user.id), user);
+  }
+
+  /**
+   * Creates an administrator, for the temporary `setup-admin` route that is
+   * commented out in `AuthController`. Same body as registration; the roles
+   * are fixed here rather than read from it, so the route cannot be talked
+   * into granting anything else.
+   */
+  async setupAdmin(dto: RegisterDto): Promise<AuthResponseDto> {
+    const user = await this.usersService.create(
+      { ...dto, roles: [UserRole.User, UserRole.Admin] },
+      true,
+    );
+
+    this.logger.warn(
+      `Administrator ${user.email} created via setup-admin — comment the route out again`,
+    );
     return this.grant(new Types.ObjectId(user.id), user);
   }
 

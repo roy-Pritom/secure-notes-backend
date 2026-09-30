@@ -1,7 +1,6 @@
 import { plainToInstance, Transform } from 'class-transformer';
 import {
   IsBoolean,
-  IsEmail,
   IsEnum,
   IsInt,
   IsNotEmpty,
@@ -141,16 +140,6 @@ export class EnvironmentVariables {
     message: 'API_KEYS must list at least one key when NODE_ENV=production',
   })
   API_KEYS: string = '';
-
-  /** Set both to create the first administrator on boot; omit both to skip it. */
-  @IsEmail()
-  @IsOptional()
-  BOOTSTRAP_ADMIN_EMAIL?: string;
-
-  @IsString()
-  @MinLength(12)
-  @IsOptional()
-  BOOTSTRAP_ADMIN_PASSWORD?: string;
 }
 
 export function validateEnv(

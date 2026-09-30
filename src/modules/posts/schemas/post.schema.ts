@@ -4,6 +4,7 @@ import { HydratedDocument, Model, Types } from 'mongoose';
 
 import { BaseSchema } from '../../../common/schemas/base.schema';
 import { applyDocumentSerialization } from '../../../common/schemas/serialization';
+import { searchTokensPlugin } from '../../../common/search/search-tokens';
 import { User } from '../../users/schemas/user.schema';
 import { PostStatus } from '../enums';
 
@@ -93,11 +94,26 @@ export type PostModel = Model<PostDocument>;
 
 export const PostSchema = SchemaFactory.createForClass(Post);
 
-// Drives the `$lookup` join. `isDeleted` sits between the equality key and the
-// sort key so the active-only filter is read from the index, not applied after.
+/*
+ * Both drive the `$lookup` join, and both put `status` among the equality keys:
+ * a reader who is not the author sees `status: 'published'` only, while the
+ * author and admins ask for `status: { $in: [draft, published] }`, which the
+ * planner answers as two ordered index ranges merged (SORT_MERGE), not a sort.
+ */
 PostSchema.index(
-  { author: 1, isDeleted: 1, createdAt: -1 },
-  { name: 'posts_by_author_created' },
+  { author: 1, isDeleted: 1, status: 1, createdAt: -1 },
+  { name: 'posts_by_author_status_created' },
 );
+
+// `?searchTerm=` inside the join: the token prefix bounds the scan to matching
+// posts, which are then ordered newest-first in memory.
+PostSchema.index(
+  { author: 1, isDeleted: 1, status: 1, searchTokens: 1 },
+  { name: 'posts_by_author_status_search_token' },
+);
+
+PostSchema.plugin(searchTokensPlugin, {
+  fields: ['title', 'body', 'excerpt', 'tags'],
+});
 
 applyDocumentSerialization(PostSchema);

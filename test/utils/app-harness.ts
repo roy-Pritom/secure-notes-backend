@@ -37,7 +37,6 @@ interface AuthBody {
 }
 
 export const PASSWORD = 'C0rrect-Horse-Battery!';
-export const BOOTSTRAP_ADMIN_EMAIL = 'bootstrap-admin@example.test';
 
 /** Boots the real AppModule — config, guards, pipes, filters — on a fresh mongod. */
 export async function startHarness(
@@ -57,9 +56,6 @@ export async function startHarness(
   process.env.MONGODB_SYNC_INDEXES = 'true';
   // Login lockout has its own test; it must not trip the other specs.
   process.env.LOGIN_MAX_ATTEMPTS = '5';
-  // Pinned so the seeded administrator cannot collide with a test account.
-  process.env.BOOTSTRAP_ADMIN_EMAIL = BOOTSTRAP_ADMIN_EMAIL;
-  process.env.BOOTSTRAP_ADMIN_PASSWORD = PASSWORD;
   // Always assigned, never merely defaulted: a key left over in `.env` or from
   // an earlier spec in the same worker would otherwise gate every request here.
   process.env.API_KEYS = (options.apiKeys ?? []).join(',');

@@ -2,6 +2,9 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { PipelineStage, Types } from 'mongoose';
 import request from 'supertest';
 
+import { tokenSearchFilter } from '../src/common/search';
+import { SearchTokensBackfillService } from '../src/database/search-tokens-backfill.service';
+import { USERS_SEARCH_INDEX } from '../src/modules/users/schemas/user.schema';
 import {
   interestGroupsPipeline,
   userPostsPipeline,
@@ -26,7 +29,11 @@ interface PageBody<T> {
   meta: { total: number; page: number; limit: number };
 }
 
-interface UserPostsBody extends PageBody<{ id: string; title: string }> {
+interface UserPostsBody extends PageBody<{
+  id: string;
+  title: string;
+  status: string;
+}> {
   author: { id: string; fullName: string; email: string };
 }
 
@@ -117,6 +124,7 @@ describe('Aggregations (e2e)', () => {
   let app: NestExpressApplication;
   let admin: Account;
   let ada: Account;
+  let bo: Account;
 
   beforeAll(async () => {
     harness = await startHarness('e2e-aggregations');
@@ -126,9 +134,20 @@ describe('Aggregations (e2e)', () => {
     ada = await register(app, 'ada@example.com', {
       interests: ['chess', 'reading'],
     });
-    await register(app, 'bo@example.com', { interests: ['chess'] });
+    bo = await register(app, 'bo@example.com', { interests: ['chess'] });
     await register(app, 'cy@example.com', { interests: ['gardening'] });
     await register(app, 'no-interests@example.com');
+
+    // Written first, so "newest first" still leads with a published post.
+    await request(app.getHttpServer())
+      .post('/api/v1/posts')
+      .set(...auth(ada))
+      .send({
+        title: 'Secret draft',
+        body: 'Unfinished thoughts',
+        status: 'draft',
+      })
+      .expect(201);
 
     for (const title of ['Post one', 'Post two', 'Post three']) {
       await request(app.getHttpServer())
@@ -215,22 +234,56 @@ describe('Aggregations (e2e)', () => {
   });
 
   describe('scenario 2 — a user with their posts ($lookup)', () => {
-    it('returns the author and a page of their posts', async () => {
-      const body = (
+    const postsOf = async (
+      author: Account,
+      viewer: Account,
+      queryString = '',
+    ): Promise<UserPostsBody> =>
+      (
         await request(app.getHttpServer())
-          .get(`/api/v1/users/${ada.id}/posts?limit=2`)
-          .set(...auth(admin))
+          .get(`/api/v1/users/${author.id}/posts${queryString}`)
+          .set(...auth(viewer))
           .expect(200)
       ).body as UserPostsBody;
+
+    it('returns the author and a page of their posts', async () => {
+      const body = await postsOf(ada, admin, '?limit=2');
 
       expect(body.author).toMatchObject({
         id: ada.id,
         email: 'ada@example.com',
       });
       expect(body.items).toHaveLength(2);
-      expect(body.meta).toMatchObject({ total: 3, limit: 2, page: 1 });
+      expect(body.meta).toMatchObject({ total: 4, limit: 2, page: 1 });
       // Newest first.
       expect(body.items[0].title).toBe('Post three');
+    });
+
+    it('shows drafts to their author and to admins', async () => {
+      for (const viewer of [ada, admin]) {
+        const body = await postsOf(ada, viewer);
+        expect(body.meta.total).toBe(4);
+        expect(body.items.map((post) => post.title)).toContain('Secret draft');
+      }
+    });
+
+    it('leaves drafts out for every other reader — items and total alike', async () => {
+      const body = await postsOf(ada, bo);
+
+      expect(body.items.map((post) => post.status)).toEqual([
+        'published',
+        'published',
+        'published',
+      ]);
+      // Counted in the pipeline, so the total never betrays a hidden draft.
+      expect(body.meta.total).toBe(3);
+    });
+
+    it('does not let a search reach a draft the reader may not see', async () => {
+      expect((await postsOf(ada, bo, '?searchTerm=secret')).meta.total).toBe(0);
+      expect((await postsOf(ada, ada, '?searchTerm=secret')).meta.total).toBe(
+        1,
+      );
     });
 
     it('returns an empty page for an author with no posts', async () => {
@@ -252,48 +305,77 @@ describe('Aggregations (e2e)', () => {
         .expect(404);
     });
 
-    it("reads an author's posts in order straight from the index", async () => {
-      const explain = (await harness.connection
-        .collection('posts')
-        .find({ author: new Types.ObjectId(ada.id), isDeleted: false })
-        .sort({ createdAt: -1 })
-        .explain()) as unknown;
+    it.each([
+      { label: 'published only', status: 'published' },
+      { label: 'drafts included', status: { $in: ['draft', 'published'] } },
+    ])(
+      "reads an author's posts in order straight from the index ($label)",
+      async ({ status }) => {
+        const explain = (await harness.connection
+          .collection('posts')
+          .find({
+            author: new Types.ObjectId(ada.id),
+            isDeleted: false,
+            status,
+          })
+          .sort({ createdAt: -1 })
+          .explain()) as { queryPlanner: { winningPlan: unknown } };
 
-      const stages = stageNames(explain);
-      expect(stages).toContain('IXSCAN');
-      // The index already stores the order, so nothing is sorted in memory.
-      expect(stages).not.toContain('SORT');
-    });
+        // The winning plan only: rejected candidates routinely contain a SORT.
+        const stages = stageNames(explain.queryPlanner.winningPlan);
+        expect(stages).toContain('IXSCAN');
+        // The index stores the order — for the `$in`, as two ordered ranges
+        // merged (SORT_MERGE) — so nothing is sorted in memory.
+        expect(stages).not.toContain('SORT');
+      },
+    );
 
     // The assertion above describes a `find` shaped like the join, not the
     // join itself. This one asks the `$lookup` stage how it really resolved.
-    it('joins through posts_by_author_created, never scanning posts', async () => {
+    it.each([
+      { label: 'the author', includeDrafts: true, examined: 4 },
+      { label: 'another reader', includeDrafts: false, examined: 3 },
+    ])(
+      'joins through posts_by_author_status_created for $label, never scanning posts',
+      async ({ includeDrafts, examined }) => {
+        const stats = lookupStats(
+          await explainPipeline(
+            harness,
+            'users',
+            userPostsPipeline(new Types.ObjectId(ada.id), 0, 20, {
+              includeDrafts,
+            }),
+          ),
+        );
+
+        expect(stats).toBeDefined();
+        expect(stats?.indexesUsed).toEqual(['posts_by_author_status_created']);
+        expect(stats?.collectionScans).toBe(0);
+        // Only the posts this reader may see are touched — a hidden draft is
+        // excluded by the index bounds, not fetched and then discarded.
+        expect(stats?.totalDocsExamined).toBe(examined);
+      },
+    );
+
+    it('answers a searchTerm from the token index, fetching only the match', async () => {
       const stats = lookupStats(
         await explainPipeline(
           harness,
           'users',
-          userPostsPipeline(new Types.ObjectId(ada.id), 0, 20),
+          userPostsPipeline(new Types.ObjectId(ada.id), 0, 20, {
+            includeDrafts: true,
+            searchTerm: 'three',
+          }),
         ),
       );
 
-      expect(stats).toBeDefined();
-      expect(stats?.indexesUsed).toEqual(['posts_by_author_created']);
+      expect(stats?.indexesUsed).toEqual([
+        'posts_by_author_status_search_token',
+      ]);
       expect(stats?.collectionScans).toBe(0);
-      // Only this author's three posts are touched, not the collection.
-      expect(stats?.totalDocsExamined).toBe(3);
-    });
-
-    it('keeps the join indexed when a searchTerm narrows it', async () => {
-      const stats = lookupStats(
-        await explainPipeline(
-          harness,
-          'users',
-          userPostsPipeline(new Types.ObjectId(ada.id), 0, 20, 'three'),
-        ),
-      );
-
-      expect(stats?.indexesUsed).toEqual(['posts_by_author_created']);
-      expect(stats?.collectionScans).toBe(0);
+      // A regex over `title`/`body` would fetch all four posts to test them;
+      // the token bounds mean only "Post three" is ever read.
+      expect(stats?.totalDocsExamined).toBe(1);
     });
   });
 
@@ -330,7 +412,7 @@ describe('Aggregations (e2e)', () => {
       });
     });
 
-    it('finds a user by any part of their name, whatever the case', async () => {
+    it('finds a user by a word of their name, whatever the case', async () => {
       expect(emails(await users('?searchTerm=LOVELACE'))).toEqual([
         'lovelace@example.com',
       ]);
@@ -356,8 +438,87 @@ describe('Aggregations (e2e)', () => {
       expect(page.items).toHaveLength(1);
     });
 
+    it('matches the start of a word, not any substring', async () => {
+      expect(emails(await users('?searchTerm=love'))).toEqual([
+        'lovelace@example.com',
+      ]);
+      // Inside a word is not a word start — the price of an indexable search.
+      expect((await users('?searchTerm=lace')).meta.total).toBe(0);
+    });
+
     it('takes the term as text, never as a pattern', async () => {
       expect((await users('?searchTerm=.*')).meta.total).toBe(0);
+    });
+
+    it('answers a search from the token index, reading only the matches', async () => {
+      const explain = (await harness.connection
+        .collection('users')
+        .find({ isDeleted: false, ...tokenSearchFilter('writes about') })
+        .sort({ createdAt: -1 })
+        .hint(USERS_SEARCH_INDEX)
+        .explain('executionStats')) as {
+        executionStats: { nReturned: number; totalDocsExamined: number };
+      };
+
+      expect(indexNames(explain)).toContain(USERS_SEARCH_INDEX);
+      expect(stageNames(explain)).not.toContain('COLLSCAN');
+      expect(explain.executionStats.nReturned).toBe(2);
+      // Nothing is fetched just to be thrown away by a regex.
+      expect(explain.executionStats.totalDocsExamined).toBe(2);
+    });
+
+    it('keeps the tokens in step when a searchable field changes', async () => {
+      const editor = await register(app, 'edit-me@example.com', {
+        bio: 'Collects stamps.',
+      });
+      expect(emails(await users('?searchTerm=stamps'))).toEqual([
+        'edit-me@example.com',
+      ]);
+
+      await request(app.getHttpServer())
+        .patch('/api/v1/profile')
+        .set(...auth(editor))
+        .send({ bio: 'Grows orchids.' })
+        .expect(200);
+
+      expect((await users('?searchTerm=stamps')).meta.total).toBe(0);
+      expect(emails(await users('?searchTerm=orchids'))).toEqual([
+        'edit-me@example.com',
+      ]);
+      // Only the bio was sent; the other fields' tokens must survive it.
+      expect(emails(await users('?searchTerm=edit-me'))).toEqual([
+        'edit-me@example.com',
+      ]);
+    });
+
+    it('backfills documents written before tokens existed', async () => {
+      const now = new Date();
+      await harness.connection.collection('users').insertOne({
+        email: 'legacy@example.com',
+        passwordHash: 'not-a-real-hash',
+        firstName: 'Legacy',
+        lastName: 'Account',
+        roles: ['user'],
+        status: 'active',
+        avatarUrl: null,
+        bio: null,
+        interests: [],
+        lastLoginAt: null,
+        passwordChangedAt: now,
+        isDeleted: false,
+        deletedAt: null,
+        createdAt: now,
+        updatedAt: now,
+      });
+      expect((await users('?searchTerm=legacy')).meta.total).toBe(0);
+
+      await app.get(SearchTokensBackfillService).backfill();
+
+      expect(emails(await users('?searchTerm=legacy'))).toEqual([
+        'legacy@example.com',
+      ]);
+      // A second run finds nothing left to do.
+      expect(await app.get(SearchTokensBackfillService).backfill()).toBe(0);
     });
 
     it("searches an author's posts inside the $lookup", async () => {
@@ -383,7 +544,7 @@ describe('Aggregations (e2e)', () => {
       expect(byBody.meta.total).toBe(3);
     });
 
-    it('rejects a term long enough to make the scan expensive', async () => {
+    it('rejects an overlong term', async () => {
       await request(app.getHttpServer())
         .get(`/api/v1/users?searchTerm=${'a'.repeat(101)}`)
         .set(...auth(admin))
@@ -402,14 +563,21 @@ describe('Aggregations (e2e)', () => {
         '_id_',
         'active_users_by_created',
         'active_users_by_interest',
+        'active_users_by_search_token',
         'uniq_active_email',
       ]);
       expect(await names('notes')).toEqual([
         '_id_',
         'all_notes_by_created',
+        'all_notes_by_search_token',
         'own_notes_by_created',
+        'own_notes_by_search_token',
       ]);
-      expect(await names('posts')).toEqual(['_id_', 'posts_by_author_created']);
+      expect(await names('posts')).toEqual([
+        '_id_',
+        'posts_by_author_status_created',
+        'posts_by_author_status_search_token',
+      ]);
       expect(await names('refresh_tokens')).toEqual([
         '_id_',
         'expired_sessions_ttl',

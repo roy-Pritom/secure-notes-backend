@@ -46,6 +46,15 @@ export class AuthController {
     return this.authService.register(dto);
   }
 
+  // @Public()
+  // @Throttle(CREDENTIAL_THROTTLE)
+  // @Post('setup-admin')
+  // @ApiOperation({ summary: 'Create the first administrator (temporary)' })
+  // @ApiCreatedResponse({ type: AuthResponseDto })
+  // setupAdmin(@Body() dto: RegisterDto): Promise<AuthResponseDto> {
+  //   return this.authService.setupAdmin(dto);
+  // }
+
   @Public()
   @Throttle(CREDENTIAL_THROTTLE)
   @Post('login')

@@ -1,6 +1,7 @@
 import { PipelineStage, Types } from 'mongoose';
 
-import { searchFilter } from '../../../common/search';
+import { tokenSearchFilter } from '../../../common/search';
+import { PostStatus } from '../../posts/enums';
 import { Post, POST_COLLECTION } from '../../posts/schemas/post.schema';
 
 const FULL_NAME = { $concat: ['$firstName', ' ', '$lastName'] };
@@ -73,20 +74,24 @@ export function interestGroupsPipeline(
   ];
 }
 
-/** A post is found by what it says and by how it was filed. */
-const POST_SEARCHABLE_FIELDS = ['title', 'body', 'excerpt', 'tags'] as const;
+export interface UserPostsOptions {
+  /** Drafts are for their author and admins; everyone else gets published only. */
+  includeDrafts: boolean;
+  searchTerm?: string;
+}
 
 /**
  * Scenario 2 — one user with their posts in a single pass. The `$lookup` joins
- * through `posts_by_author_created`, which also serves the sub-pipeline's
- * `$match` and `$sort`. A `searchTerm` joins that `$match`, so `total`
- * describes the filtered set rather than the whole authorship.
+ * through `posts_by_author_status_created`, which also serves the
+ * sub-pipeline's `$match` and `$sort`; a `searchTerm` switches the join to
+ * `posts_by_author_status_search_token`. Both filters sit in that `$match`,
+ * so `total` counts exactly the posts the caller may see.
  */
 export function userPostsPipeline(
   userId: Types.ObjectId,
   skip: number,
   limit: number,
-  searchTerm?: string,
+  { includeDrafts, searchTerm }: UserPostsOptions,
 ): PipelineStage[] {
   return [
     { $match: { _id: userId, isDeleted: false } },
@@ -100,7 +105,12 @@ export function userPostsPipeline(
           {
             $match: {
               isDeleted: false,
-              ...searchFilter<Post>(searchTerm, POST_SEARCHABLE_FIELDS),
+              // Always an equality key on the index, never a post-filter: the
+              // `$in` is what lets the author's view skip a blocking sort.
+              status: includeDrafts
+                ? { $in: [PostStatus.Draft, PostStatus.Published] }
+                : PostStatus.Published,
+              ...tokenSearchFilter<Post>(searchTerm),
             },
           },
           { $sort: { createdAt: -1 } },

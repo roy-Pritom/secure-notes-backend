@@ -23,6 +23,8 @@ export function applyDocumentSerialization(
     }
     delete ret._id;
     delete ret.__v;
+    // Search plumbing, never content: a freshly created document still has it.
+    delete ret.searchTokens;
     return extra ? extra(doc, ret) : ret;
   };
 

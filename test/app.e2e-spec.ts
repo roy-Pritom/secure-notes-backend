@@ -4,7 +4,6 @@ import request from 'supertest';
 import {
   Account,
   auth,
-  BOOTSTRAP_ADMIN_EMAIL,
   Harness,
   PASSWORD,
   register,
@@ -189,24 +188,6 @@ describe('Auth and access control (e2e)', () => {
         .post('/api/v1/auth/refresh')
         .send({ refreshToken: account.refreshToken })
         .expect(401);
-    });
-  });
-
-  describe('bootstrap administrator', () => {
-    it('is seeded from the environment and can reach admin routes', async () => {
-      const body = (
-        await request(app.getHttpServer())
-          .post('/api/v1/auth/login')
-          .send({ email: BOOTSTRAP_ADMIN_EMAIL, password: PASSWORD })
-          .expect(200)
-      ).body as AuthBody;
-
-      expect(body.user.roles).toContain('admin');
-
-      await request(app.getHttpServer())
-        .get('/api/v1/users')
-        .set('Authorization', `Bearer ${body.accessToken}`)
-        .expect(200);
     });
   });
 

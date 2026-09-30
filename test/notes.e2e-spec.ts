@@ -1,6 +1,12 @@
 import { NestExpressApplication } from '@nestjs/platform-express';
+import { Types } from 'mongoose';
 import request from 'supertest';
 
+import { tokenSearchFilter } from '../src/common/search';
+import {
+  ALL_NOTES_SEARCH_INDEX,
+  OWN_NOTES_SEARCH_INDEX,
+} from '../src/modules/notes/schemas/note.schema';
 import {
   Account,
   auth,
@@ -366,7 +372,7 @@ describe('Notes (e2e)', () => {
       ]);
     });
 
-    it('matches a substring, not only a whole word', async () => {
+    it('matches the start of a word, not only a whole word', async () => {
       expect(titles(await list('?searchTerm=endgam'))).toEqual([
         'Rook endgames',
       ]);
@@ -383,7 +389,8 @@ describe('Notes (e2e)', () => {
     });
 
     it('counts the matches, not the whole collection', async () => {
-      const page = await list('?searchTerm=e&limit=2');
+      // Lucena, lines, list: one word in each live note starts with "l".
+      const page = await list('?searchTerm=l&limit=2');
 
       expect(page.items).toHaveLength(2);
       expect(page.meta.total).toBe(3);
@@ -391,13 +398,80 @@ describe('Notes (e2e)', () => {
     });
 
     it('takes the term as text, never as a pattern', async () => {
-      // Unescaped, `.*` would match every note; escaped, it matches the ones
-      // that literally contain it — none.
+      // As a pattern `.*` would match every note; as text it has no words at
+      // all, and `[xyz]+` is just the word "xyz" — neither matches anything.
       expect((await list('?searchTerm=.*')).meta.total).toBe(0);
-      expect((await list('?searchTerm=%5Ba-z%5D%2B')).meta.total).toBe(0);
+      expect((await list('?searchTerm=%5Bxyz%5D%2B')).meta.total).toBe(0);
     });
 
-    it('rejects a term long enough to make the scan expensive', async () => {
+    it('keeps the tokens in step when a note is edited', async () => {
+      const created = (
+        await request(app.getHttpServer())
+          .post('/api/v1/notes')
+          .set(...auth(searcher))
+          .send({ title: 'Sicilian ideas', content: 'Dragon setups' })
+          .expect(201)
+      ).body as NoteBody;
+      expect(titles(await list('?searchTerm=sicilian'))).toEqual([
+        'Sicilian ideas',
+      ]);
+
+      await request(app.getHttpServer())
+        .patch(`/api/v1/notes/${created.id}`)
+        .set(...auth(searcher))
+        .send({ title: 'French ideas' })
+        .expect(200);
+
+      expect((await list('?searchTerm=sicilian')).meta.total).toBe(0);
+      expect(titles(await list('?searchTerm=french'))).toEqual([
+        'French ideas',
+      ]);
+      // Only the title changed; the content's tokens must survive the edit.
+      expect(titles(await list('?searchTerm=dragon'))).toEqual([
+        'French ideas',
+      ]);
+    });
+
+    // Pinned with the same hint the repository sends, so this is the plan the
+    // listing really gets — not whatever the planner fancies on four notes.
+    it.each([
+      {
+        label: "a user's own listing",
+        scoped: true,
+        index: OWN_NOTES_SEARCH_INDEX,
+      },
+      {
+        label: 'the admin listing',
+        scoped: false,
+        index: ALL_NOTES_SEARCH_INDEX,
+      },
+    ])(
+      'answers a search on $label from $index, reading only the matches',
+      async ({ scoped, index }) => {
+        const explain = (await harness.connection
+          .collection('notes')
+          .find({
+            ...(scoped ? { owner: new Types.ObjectId(searcher.id) } : {}),
+            isDeleted: false,
+            isArchived: false,
+            ...tokenSearchFilter('najdorf'),
+          })
+          .sort({ isPinned: -1, createdAt: -1 })
+          .hint(index)
+          .explain('executionStats')) as {
+          queryPlanner: { winningPlan: unknown };
+          executionStats: { nReturned: number; totalDocsExamined: number };
+        };
+
+        expect(JSON.stringify(explain.queryPlanner.winningPlan)).toContain(
+          `"indexName":"${index}"`,
+        );
+        expect(explain.executionStats.nReturned).toBe(1);
+        expect(explain.executionStats.totalDocsExamined).toBe(1);
+      },
+    );
+
+    it('rejects an overlong term', async () => {
       await request(app.getHttpServer())
         .get(`/api/v1/notes?searchTerm=${'a'.repeat(101)}`)
         .set(...auth(searcher))

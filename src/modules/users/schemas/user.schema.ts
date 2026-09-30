@@ -5,6 +5,7 @@ import { HydratedDocument, Model } from 'mongoose';
 
 import { BaseSchema } from '../../../common/schemas/base.schema';
 import { applyDocumentSerialization } from '../../../common/schemas/serialization';
+import { searchTokensPlugin } from '../../../common/search/search-tokens';
 import { UserRole, UserStatus } from '../enums';
 
 export const USER_COLLECTION = 'users';
@@ -15,6 +16,9 @@ export const MAX_INTERESTS = 20;
 export const MAX_INTEREST_LENGTH = 40;
 export const MAX_BIO_LENGTH = 500;
 export const MAX_AVATAR_URL_LENGTH = 512;
+
+/** Named so the repository can pin it for a search. */
+export const USERS_SEARCH_INDEX = 'active_users_by_search_token';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -115,7 +119,6 @@ export class User extends BaseSchema {
   @Prop({ type: Date, default: null })
   lastLoginAt!: Date | null;
 
-  
   @ApiProperty({ type: Date })
   @Prop({ type: Date, default: (): Date => new Date() })
   passwordChangedAt!: Date;
@@ -157,11 +160,22 @@ UserSchema.index(
   { name: 'active_users_by_created' },
 );
 
+// Serves `?searchTerm=`: the token prefix is a bounded range on this index, so
+// only matching users are fetched; the page is then ordered in memory.
+UserSchema.index(
+  { isDeleted: 1, searchTokens: 1 },
+  { name: USERS_SEARCH_INDEX },
+);
+
 // Serves the interest grouping and its optional single-interest filter.
 UserSchema.index(
   { isDeleted: 1, interests: 1 },
   { name: 'active_users_by_interest' },
 );
+
+UserSchema.plugin(searchTokensPlugin, {
+  fields: ['firstName', 'lastName', 'email', 'bio'],
+});
 
 UserSchema.virtual('fullName').get(function (this: UserDocument): string {
   return `${this.firstName} ${this.lastName}`.trim();

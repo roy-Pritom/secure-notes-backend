@@ -287,9 +287,10 @@ describe('Soft delete (e2e)', () => {
         isDeleted: 1,
         interests: 1,
       });
-      expect(await keys('posts', 'posts_by_author_created')).toEqual({
+      expect(await keys('posts', 'posts_by_author_status_created')).toEqual({
         author: 1,
         isDeleted: 1,
+        status: 1,
         createdAt: -1,
       });
     });
@@ -432,10 +433,27 @@ describe('Soft-delete listings read straight from an index (e2e)', () => {
       sort: byCreated,
     },
     {
-      label: "an author's posts, as the $lookup reads them",
+      label:
+        "an author's published posts, as the $lookup reads them for others",
       collection: 'posts',
-      indexName: 'posts_by_author_created',
-      filter: (ownerId) => ({ author: ownerId, isDeleted: false }),
+      indexName: 'posts_by_author_status_created',
+      filter: (ownerId) => ({
+        author: ownerId,
+        isDeleted: false,
+        status: 'published',
+      }),
+      sort: byCreated,
+    },
+    {
+      label:
+        "an author's posts with drafts, as the $lookup reads them for the author",
+      collection: 'posts',
+      indexName: 'posts_by_author_status_created',
+      filter: (ownerId) => ({
+        author: ownerId,
+        isDeleted: false,
+        status: { $in: ['draft', 'published'] },
+      }),
       sort: byCreated,
     },
   ];

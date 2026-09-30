@@ -7,9 +7,15 @@ import {
   PaginationService,
   SortSpec,
 } from '../../common/pagination';
-import { searchFilter } from '../../common/search';
+import { tokenSearchFilter } from '../../common/search';
 import { QueryNotesDto } from './dto';
-import { Note, type NoteDocument, type NoteModel } from './schemas/note.schema';
+import {
+  ALL_NOTES_SEARCH_INDEX,
+  Note,
+  type NoteDocument,
+  type NoteModel,
+  OWN_NOTES_SEARCH_INDEX,
+} from './schemas/note.schema';
 import { CreateNoteData } from './types';
 
 /** The only place that talks to the `notes` collection. */
@@ -44,6 +50,11 @@ export class NotesRepository {
       this.buildFilter(query, owner),
       query,
       pinnedFirst(query),
+      query.searchTerm
+        ? owner
+          ? OWN_NOTES_SEARCH_INDEX
+          : ALL_NOTES_SEARCH_INDEX
+        : undefined,
     );
   }
 
@@ -90,13 +101,10 @@ export class NotesRepository {
     }
     return this.live({
       ...filter,
-      ...searchFilter(query.searchTerm, SEARCHABLE_FIELDS),
+      ...tokenSearchFilter<Note>(query.searchTerm),
     });
   }
 }
-
-/** A note is found by what it says and by how it was filed. */
-const SEARCHABLE_FIELDS = ['title', 'content', 'tags'] as const;
 
 /**
  * Pinned notes lead, then the requested date order. The descending page —

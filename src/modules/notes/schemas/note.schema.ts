@@ -4,6 +4,7 @@ import { HydratedDocument, Model, Types } from 'mongoose';
 
 import { BaseSchema } from '../../../common/schemas/base.schema';
 import { applyDocumentSerialization } from '../../../common/schemas/serialization';
+import { searchTokensPlugin } from '../../../common/search/search-tokens';
 import { User } from '../../users/schemas/user.schema';
 import { NoteColor } from '../enums';
 
@@ -13,6 +14,10 @@ export const MAX_NOTE_TITLE_LENGTH = 160;
 export const MAX_NOTE_CONTENT_LENGTH = 20_000;
 export const MAX_NOTE_TAGS = 10;
 export const MAX_NOTE_TAG_LENGTH = 30;
+
+/** Named so the repository can pin them for a search. */
+export const OWN_NOTES_SEARCH_INDEX = 'own_notes_by_search_token';
+export const ALL_NOTES_SEARCH_INDEX = 'all_notes_by_search_token';
 
 @Schema({
   collection: NOTE_COLLECTION,
@@ -102,5 +107,20 @@ NoteSchema.index(
   { isDeleted: 1, isArchived: 1, isPinned: -1, createdAt: -1 },
   { name: 'all_notes_by_created' },
 );
+
+// `?searchTerm=` on each listing. The token prefix is the range that bounds the
+// scan, so only matching notes are fetched; pinned-first order is then applied
+// in memory over the matches.
+NoteSchema.index(
+  { owner: 1, isDeleted: 1, isArchived: 1, searchTokens: 1 },
+  { name: OWN_NOTES_SEARCH_INDEX },
+);
+
+NoteSchema.index(
+  { isDeleted: 1, isArchived: 1, searchTokens: 1 },
+  { name: ALL_NOTES_SEARCH_INDEX },
+);
+
+NoteSchema.plugin(searchTokensPlugin, { fields: ['title', 'content', 'tags'] });
 
 applyDocumentSerialization(NoteSchema);

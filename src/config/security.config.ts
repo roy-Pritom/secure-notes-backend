@@ -14,8 +14,6 @@ export interface SecurityConfig {
   throttleLimit: number;
   /** Accepted `x-api-key` values. Empty disables the gate outside production. */
   apiKeys: string[];
-  /** Optional first administrator, created once on boot. */
-  bootstrapAdmin: { email: string; password: string } | null;
 }
 
 export default registerAs<SecurityConfig>(SECURITY_CONFIG_KEY, () => ({
@@ -32,11 +30,4 @@ export default registerAs<SecurityConfig>(SECURITY_CONFIG_KEY, () => ({
     .split(',')
     .map((key) => key.trim())
     .filter(Boolean),
-  bootstrapAdmin:
-    process.env.BOOTSTRAP_ADMIN_EMAIL && process.env.BOOTSTRAP_ADMIN_PASSWORD
-      ? {
-          email: process.env.BOOTSTRAP_ADMIN_EMAIL,
-          password: process.env.BOOTSTRAP_ADMIN_PASSWORD,
-        }
-      : null,
 }));

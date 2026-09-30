@@ -14,6 +14,8 @@
     "start:prod": "node dist/main",
     "db:indexes": "ts-node -r tsconfig-paths/register src/scripts/sync-indexes.ts",
     "db:indexes:prod": "node dist/scripts/sync-indexes",
+    "db:search-tokens": "ts-node -r tsconfig-paths/register src/scripts/backfill-search-tokens.ts",
+    "db:search-tokens:prod": "node dist/scripts/backfill-search-tokens",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
     "test:watch": "jest --watch",

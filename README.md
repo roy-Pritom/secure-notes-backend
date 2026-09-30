@@ -87,9 +87,27 @@ pnpm start:dev
 
 Swagger UI is at `/api/docs` outside production.
 
-Set `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` to have the first
-administrator created on boot; an empty database otherwise has no account able to
-promote anyone. It runs once and is a no-op on every later boot.
+No account is ever created automatically, and the API cannot mint the first
+administrator: registration always yields the `user` role, and `PATCH /users/:id`
+already requires an admin. So the first one is granted directly in the database.
+
+Register normally, then flip the roles on that document:
+
+```js
+// mongosh, or the Atlas UI
+db.users.updateOne(
+  { email: 'you@example.com', isDeleted: false },
+  { $set: { roles: ['user', 'admin'] } },
+)
+db.refresh_tokens.updateMany(   // force a fresh login so the token carries the role
+  { user: db.users.findOne({ email: 'you@example.com' })._id, revokedAt: null },
+  { $set: { revokedAt: new Date() } },
+)
+```
+
+Roles are signed into the access token, so an existing session keeps the old role
+until it expires — hence the second statement. Every admin after the first can be
+made through `PATCH /users/:id`.
 
 ```bash
 pnpm test         # unit

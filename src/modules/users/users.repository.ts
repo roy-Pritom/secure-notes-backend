@@ -3,10 +3,15 @@ import { InjectModel } from '@nestjs/mongoose';
 import { ProjectionType, QueryOptions, Types, UpdateQuery } from 'mongoose';
 
 import { PagedResult, PaginationService } from '../../common/pagination';
-import { SearchQueryDto, searchFilter } from '../../common/search';
+import { SearchQueryDto, tokenSearchFilter } from '../../common/search';
 import { interestGroupsPipeline, userPostsPipeline } from './aggregations';
 import { QueryInterestsDto } from './dto';
-import { User, type UserDocument, type UserModel } from './schemas/user.schema';
+import {
+  User,
+  type UserDocument,
+  type UserModel,
+  USERS_SEARCH_INDEX,
+} from './schemas/user.schema';
 import {
   CreateUserData,
   InterestGroupsResult,
@@ -57,16 +62,18 @@ export class UsersRepository {
   }
 
   /**
-   * Served by `active_users_by_created`; a `searchTerm` filters the rows that
-   * index walks rather than replacing it.
+   * Served by `active_users_by_created`, or by `active_users_by_search_token`
+   * when a `searchTerm` bounds the scan to matching users.
    */
   async findPaginated(
     query: SearchQueryDto,
   ): Promise<PagedResult<UserDocument>> {
     return this.pagination.fetchPage<UserDocument>(
       this.userModel,
-      this.live(searchFilter<User>(query.searchTerm, SEARCHABLE_FIELDS)),
+      this.live(tokenSearchFilter<User>(query.searchTerm)),
       query,
+      undefined,
+      query.searchTerm ? USERS_SEARCH_INDEX : undefined,
     );
   }
 
@@ -102,12 +109,14 @@ export class UsersRepository {
   async findWithPosts(
     userId: Types.ObjectId,
     query: SearchQueryDto,
+    includeDrafts: boolean,
   ): Promise<UserPostsResult | null> {
     const [result] = await this.userModel.aggregate<UserPostsResult>(
-      userPostsPipeline(userId, query.skip, query.limit, query.searchTerm),
+      userPostsPipeline(userId, query.skip, query.limit, {
+        includeDrafts,
+        searchTerm: query.searchTerm,
+      }),
     );
     return result ?? null;
   }
 }
-
-const SEARCHABLE_FIELDS = ['firstName', 'lastName', 'email', 'bio'] as const;

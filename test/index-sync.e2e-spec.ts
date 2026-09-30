@@ -29,7 +29,9 @@ describe('Declared indexes are built, not assumed (e2e)', () => {
     expect(await indexNames('users')).toContain('active_users_by_created');
     expect(await indexNames('notes')).toContain('own_notes_by_created');
     expect(await indexNames('notes')).toContain('all_notes_by_created');
-    expect(await indexNames('posts')).toContain('posts_by_author_created');
+    expect(await indexNames('posts')).toContain(
+      'posts_by_author_status_created',
+    );
     expect(await indexNames('refresh_tokens')).toContain(
       'uniq_refresh_token_hash',
     );
