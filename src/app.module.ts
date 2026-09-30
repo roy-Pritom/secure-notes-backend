@@ -46,11 +46,8 @@ import { UsersModule } from './modules/users/users.module';
     // Registered as providers so they take part in DI and stay active in
     // e2e tests that build the module directly.
     { provide: APP_PIPE, useClass: AppValidationPipe },
-    // Globals run before controller-bound guards, and `AppModule` is scanned
-    // before its imports, so the chain is: rate limit, then the client key
-    // `GuardsModule` binds, then the `@UseGuards(JwtAuthGuard, RolesGuard)`
-    // each controller declares. An unknown client is turned away before any
-    // credential is read.
+    // Globals run first, so the chain is: rate limit, client key, then each
+    // controller's `@UseGuards`. An unknown client never reaches credentials.
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
   ],

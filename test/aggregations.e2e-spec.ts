@@ -1,7 +1,11 @@
 import { NestExpressApplication } from '@nestjs/platform-express';
-import { Types } from 'mongoose';
+import { PipelineStage, Types } from 'mongoose';
 import request from 'supertest';
 
+import {
+  interestGroupsPipeline,
+  userPostsPipeline,
+} from '../src/modules/users/aggregations';
 import {
   Account,
   auth,
@@ -26,6 +30,54 @@ interface UserPostsBody extends PageBody<{ id: string; title: string }> {
   author: { id: string; fullName: string; email: string };
 }
 
+/**
+ * Explains a pipeline as a raw command. It has to go through `db.command`
+ * rather than `Model.aggregate().explain()` because the connection's majority
+ * write concern is not allowed on an explained aggregate.
+ */
+async function explainPipeline(
+  harness: Harness,
+  collection: string,
+  pipeline: PipelineStage[],
+): Promise<unknown> {
+  return harness.connection.db?.command({
+    explain: { aggregate: collection, pipeline, cursor: {} },
+    // `executionStats`, not `queryPlanner`: a `$lookup` reports the index it
+    // joined on only once it has actually run.
+    verbosity: 'executionStats',
+  });
+}
+
+/** The `$lookup` stage's own account of how it resolved the join. */
+interface LookupStats {
+  collectionScans: number;
+  indexesUsed: string[];
+  totalDocsExamined: number;
+}
+
+function lookupStats(plan: unknown): LookupStats | undefined {
+  if (Array.isArray(plan)) {
+    for (const entry of plan) {
+      const found = lookupStats(entry);
+      if (found) return found;
+    }
+  } else if (plan && typeof plan === 'object') {
+    const node = plan as Record<string, unknown>;
+    if ('$lookup' in node && 'indexesUsed' in node) {
+      return {
+        collectionScans: node.collectionScans as number,
+        indexesUsed: node.indexesUsed as string[],
+        totalDocsExamined: node.totalDocsExamined as number,
+      };
+    }
+    for (const value of Object.values(node)) {
+      const found = lookupStats(value);
+      if (found) return found;
+    }
+  }
+  return undefined;
+}
+
 /** Walks an explain tree and collects every stage name it contains. */
 function stageNames(plan: unknown, found: string[] = []): string[] {
   if (Array.isArray(plan)) {
@@ -38,6 +90,23 @@ function stageNames(plan: unknown, found: string[] = []): string[] {
         found.push(value);
       }
       stageNames(value, found);
+    }
+  }
+  return found;
+}
+
+/** Every index the plan names, anywhere in the tree. */
+function indexNames(plan: unknown, found: string[] = []): string[] {
+  if (Array.isArray(plan)) {
+    plan.forEach((entry) => indexNames(entry, found));
+  } else if (plan && typeof plan === 'object') {
+    for (const [key, value] of Object.entries(
+      plan as Record<string, unknown>,
+    )) {
+      if (key === 'indexName' && typeof value === 'string') {
+        found.push(value);
+      }
+      indexNames(value, found);
     }
   }
   return found;
@@ -125,26 +194,24 @@ describe('Aggregations (e2e)', () => {
         .expect(403);
     });
 
-    it('is served by the interests index, not a collection scan', async () => {
-      // Run through `explain` as a raw command: the connection's majority
-      // write concern is not allowed on an explained aggregate.
-      const explain: unknown = await harness.connection.db?.command({
-        explain: {
-          aggregate: 'users',
-          pipeline: [
-            { $match: { isDeleted: false, interests: 'chess' } },
-            { $unwind: '$interests' },
-            { $group: { _id: '$interests', userCount: { $sum: 1 } } },
-          ],
-          cursor: {},
-        },
-        verbosity: 'queryPlanner',
-      });
+    // The pipeline the application actually runs, not a hand-written stand-in:
+    // an approximation would keep passing after a change to the real one.
+    it.each([
+      { label: 'unfiltered', pipeline: () => interestGroupsPipeline(0, 20) },
+      {
+        label: 'filtered to one interest',
+        pipeline: () => interestGroupsPipeline(0, 20, 'chess'),
+      },
+    ])(
+      'is served by the interests index when $label, not a collection scan',
+      async ({ pipeline }) => {
+        const explain = await explainPipeline(harness, 'users', pipeline());
 
-      const stages = stageNames(explain);
-      expect(stages).toContain('IXSCAN');
-      expect(stages).not.toContain('COLLSCAN');
-    });
+        expect(stageNames(explain)).toContain('IXSCAN');
+        expect(stageNames(explain)).not.toContain('COLLSCAN');
+        expect(indexNames(explain)).toContain('active_users_by_interest');
+      },
+    );
   });
 
   describe('scenario 2 — a user with their posts ($lookup)', () => {
@@ -196,6 +263,37 @@ describe('Aggregations (e2e)', () => {
       expect(stages).toContain('IXSCAN');
       // The index already stores the order, so nothing is sorted in memory.
       expect(stages).not.toContain('SORT');
+    });
+
+    // The assertion above describes a `find` shaped like the join, not the
+    // join itself. This one asks the `$lookup` stage how it really resolved.
+    it('joins through posts_by_author_created, never scanning posts', async () => {
+      const stats = lookupStats(
+        await explainPipeline(
+          harness,
+          'users',
+          userPostsPipeline(new Types.ObjectId(ada.id), 0, 20),
+        ),
+      );
+
+      expect(stats).toBeDefined();
+      expect(stats?.indexesUsed).toEqual(['posts_by_author_created']);
+      expect(stats?.collectionScans).toBe(0);
+      // Only this author's three posts are touched, not the collection.
+      expect(stats?.totalDocsExamined).toBe(3);
+    });
+
+    it('keeps the join indexed when a searchTerm narrows it', async () => {
+      const stats = lookupStats(
+        await explainPipeline(
+          harness,
+          'users',
+          userPostsPipeline(new Types.ObjectId(ada.id), 0, 20, 'three'),
+        ),
+      );
+
+      expect(stats?.indexesUsed).toEqual(['posts_by_author_created']);
+      expect(stats?.collectionScans).toBe(0);
     });
   });
 
@@ -309,16 +407,14 @@ describe('Aggregations (e2e)', () => {
       expect(await names('notes')).toEqual([
         '_id_',
         'all_notes_by_created',
-        'all_notes_by_tag',
         'own_notes_by_created',
-        'own_notes_by_tag',
       ]);
       expect(await names('posts')).toEqual(['_id_', 'posts_by_author_created']);
       expect(await names('refresh_tokens')).toEqual([
         '_id_',
         'expired_sessions_ttl',
         'uniq_refresh_token_hash',
-        'user_sessions_by_expiry',
+        'user_sessions',
       ]);
     });
   });

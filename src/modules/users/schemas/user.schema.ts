@@ -34,9 +34,6 @@ export class User extends BaseSchema {
     lowercase: true,
     maxlength: MAX_EMAIL_LENGTH,
     match: EMAIL_PATTERN,
-    // Uniqueness is declared as the partial `uniq_active_email` index below,
-    // not here: `unique: true` on the prop would build a second, unconditional
-    // index and a deleted account's address could never be reused.
   })
   email!: string;
 
@@ -118,10 +115,7 @@ export class User extends BaseSchema {
   @Prop({ type: Date, default: null })
   lastLoginAt!: Date | null;
 
-  /**
-   * Stamped at registration and on every change, so a client can show the
-   * age of a password and a future policy can expire one without a migration.
-   */
+  
   @ApiProperty({ type: Date })
   @Prop({ type: Date, default: (): Date => new Date() })
   passwordChangedAt!: Date;
@@ -146,15 +140,7 @@ export type UserModel = Model<UserDocument>;
 
 export const UserSchema = SchemaFactory.createForClass(User);
 
-/*
- * Indexes — one per access path, nothing speculative.
- *
- * 1. uniq_active_email      login and registration uniqueness
- * 2. active_users_by_created admin user listing (paginated, newest first)
- * 3. active_users_by_interest the "users grouped by interests" aggregation
- *
- * Reads of a single user go through `_id`, which MongoDB already indexes.
- */
+// One index per access path; single users are read by `_id`.
 
 // Unique among live users only, so a soft-deleted account frees its address.
 UserSchema.index(
@@ -171,8 +157,7 @@ UserSchema.index(
   { name: 'active_users_by_created' },
 );
 
-// Multikey: serves the `$match` + `$unwind`/`$group` on interests, and the
-// optional single-interest filter on that view.
+// Serves the interest grouping and its optional single-interest filter.
 UserSchema.index(
   { isDeleted: 1, interests: 1 },
   { name: 'active_users_by_interest' },

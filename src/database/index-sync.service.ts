@@ -38,14 +38,13 @@ export class IndexSyncService implements OnApplicationBootstrap {
     await this.sync();
   }
 
-
+  /** @param prune also drop indexes the schemas no longer declare. */
   async sync(prune = false): Promise<ModelIndexReport[]> {
     const reports: ModelIndexReport[] = [];
 
     for (const modelName of this.connection.modelNames()) {
       const model = this.connection.model(modelName);
 
-     
       const present = await existingIndexNames(model.collection);
       const created = declaredIndexNames(model.schema).filter(
         (name) => !present.includes(name),
@@ -71,27 +70,28 @@ export class IndexSyncService implements OnApplicationBootstrap {
   }
 
   private report(reports: ModelIndexReport[]): void {
-    const created = reports.flatMap((report) => report.created);
-    const dropped = reports.flatMap((report) => report.dropped);
+    let created = 0;
+    let dropped = 0;
 
     for (const report of reports) {
       for (const name of report.created) {
+        created += 1;
         this.logger.log(`Created ${report.collection}.${name}`);
       }
-      // Loud, not incidental: an index that disappears is a query plan that
-      // silently gets worse.
       for (const name of report.dropped) {
+        dropped += 1;
+        // A warning, not a log line: an index that disappears is a query plan
+        // that silently gets worse.
         this.logger.warn(`Dropped ${report.collection}.${name}`);
       }
     }
 
     this.logger.log(
       `Indexes in sync across ${reports.length} collection(s) — ` +
-        `${created.length} created, ${dropped.length} dropped`,
+        `${created} created, ${dropped} dropped`,
     );
   }
 }
-
 
 function declaredIndexNames(schema: Schema): string[] {
   return schema

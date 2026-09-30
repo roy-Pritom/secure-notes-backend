@@ -78,7 +78,6 @@ export class EnvironmentVariables {
   @IsBoolean()
   MONGODB_DEBUG: boolean = false;
 
-
   @Transform(toBoolean)
   @IsBoolean()
   @IsOptional()

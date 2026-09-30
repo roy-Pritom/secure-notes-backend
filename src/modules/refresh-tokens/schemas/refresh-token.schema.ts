@@ -21,11 +21,7 @@ export class RefreshToken extends TimestampedSchema {
   @Prop({ type: Types.ObjectId, ref: User.name, required: true })
   user!: Types.ObjectId;
 
-  /**
-   * SHA-256 of the token; the token itself is never stored, so a database dump
-   * yields nothing replayable. A fast digest is correct here — the token is
-   * already high-entropy, and bcrypt would truncate a JWT at 72 bytes.
-   */
+
   @ApiHideProperty()
   @Prop({ type: String, required: true })
   tokenHash!: string;
@@ -54,10 +50,10 @@ RefreshTokenSchema.index(
   { unique: true, name: 'uniq_refresh_token_hash' },
 );
 
-RefreshTokenSchema.index(
-  { user: 1, expiresAt: 1 },
-  { name: 'user_sessions_by_expiry' },
-);
+// `revokeAllForUser` is the only query that reaches for a user's sessions,
+// and it filters on `user` alone — `expiresAt` as a second key would be stored
+// on every entry and read by nothing. Expiry is the TTL index's job below.
+RefreshTokenSchema.index({ user: 1 }, { name: 'user_sessions' });
 
 RefreshTokenSchema.index(
   { expiresAt: 1 },

@@ -161,9 +161,9 @@ describe('Refresh token sessions (e2e)', () => {
       key: { tokenHash: 1 },
       unique: true,
     });
-    expect(byName.get('user_sessions_by_expiry')).toMatchObject({
-      key: { user: 1, expiresAt: 1 },
-    });
+    // `user` alone: `revokeAllForUser` is the only reader and never filters
+    // on expiry, so a second key would be stored on every row and read by none.
+    expect(byName.get('user_sessions')?.key).toEqual({ user: 1 });
     // TTL: expired rows age out on their own rather than growing forever.
     expect(byName.get('expired_sessions_ttl')).toMatchObject({
       key: { expiresAt: 1 },

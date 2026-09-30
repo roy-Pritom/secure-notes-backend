@@ -273,22 +273,11 @@ describe('Soft delete (e2e)', () => {
         isPinned: -1,
         createdAt: -1,
       });
-      expect(await keys('notes', 'own_notes_by_tag')).toEqual({
-        owner: 1,
-        isDeleted: 1,
-        isArchived: 1,
-        tags: 1,
-      });
       expect(await keys('notes', 'all_notes_by_created')).toEqual({
         isDeleted: 1,
         isArchived: 1,
         isPinned: -1,
         createdAt: -1,
-      });
-      expect(await keys('notes', 'all_notes_by_tag')).toEqual({
-        isDeleted: 1,
-        isArchived: 1,
-        tags: 1,
       });
       expect(await keys('users', 'active_users_by_created')).toEqual({
         isDeleted: 1,
@@ -468,24 +457,22 @@ describe('Soft-delete listings read straight from an index (e2e)', () => {
     },
   );
 
-  // Either note index can serve a tag filter: the `_by_tag` one matches the
-  // tag from the index and sorts in memory, the `_by_created` one does the
-  // reverse. Which one wins is the planner's call — the assertion is only that
-  // it never falls back to reading every document.
+  // `?tag=` has no index of its own by design; these assert what the listing
+  // indexes give instead — rows already ordered, so a page streams and stops.
   it.each([
     {
       label: "a user's own listing",
       scope: (ownerId: Types.ObjectId) => ({ owner: ownerId }),
-      prefix: 'own_notes_by_',
+      indexName: 'own_notes_by_created',
     },
     {
       label: 'the admin listing',
       scope: () => ({}),
-      prefix: 'all_notes_by_',
+      indexName: 'all_notes_by_created',
     },
   ])(
-    'narrows $label to one tag without scanning the collection',
-    async ({ scope, prefix }) => {
+    'narrows $label to one tag with no scan and no in-memory sort',
+    async ({ scope, indexName }) => {
       const { stages, indexes } = await planFor(
         'notes',
         {
@@ -497,9 +484,10 @@ describe('Soft-delete listings read straight from an index (e2e)', () => {
         pinnedFirst,
       );
 
+      expect(indexes).toContain(indexName);
       expect(stages).toContain('IXSCAN');
       expect(stages).not.toContain('COLLSCAN');
-      expect(indexes.some((name) => name.startsWith(prefix))).toBe(true);
+      expect(stages).not.toContain('SORT');
     },
   );
 });

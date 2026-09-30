@@ -32,7 +32,6 @@ export class NotesRepository {
     return this.noteModel.findOne(this.live({ _id: id })).exec();
   }
 
-
   async findPaginated(
     query: QueryNotesDto,
     owner?: Types.ObjectId,
@@ -66,7 +65,6 @@ export class NotesRepository {
     });
   }
 
-
   async softDeleteByOwner(owner: Types.ObjectId): Promise<number> {
     const result = await this.noteModel
       .updateMany(this.live({ owner }), {
@@ -76,7 +74,6 @@ export class NotesRepository {
     return result.modifiedCount;
   }
 
-  
   private buildFilter(
     query: QueryNotesDto,
     owner?: Types.ObjectId,

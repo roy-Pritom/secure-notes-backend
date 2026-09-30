@@ -2,10 +2,9 @@ import { IndexSyncService } from '../src/database/index-sync.service';
 import { Harness, startHarness } from './utils/app-harness';
 
 /**
- * `autoIndex` is off, so the indexes every listing depends on exist only
- * because `IndexSyncService` builds them. If that stops happening the API
- * still returns the right rows — it just reads every document to do it, which
- * no functional test would notice. These assert the build itself.
+ * `autoIndex` is off, so these indexes exist only because `IndexSyncService`
+ * builds them. If it stops, the API still returns the right rows — it just
+ * scans to do it, which no functional test would notice.
  */
 describe('Declared indexes are built, not assumed (e2e)', () => {
   let harness: Harness;
@@ -29,7 +28,7 @@ describe('Declared indexes are built, not assumed (e2e)', () => {
     // The lifecycle hook ran during `app.init()`; nothing here triggers it.
     expect(await indexNames('users')).toContain('active_users_by_created');
     expect(await indexNames('notes')).toContain('own_notes_by_created');
-    expect(await indexNames('notes')).toContain('all_notes_by_tag');
+    expect(await indexNames('notes')).toContain('all_notes_by_created');
     expect(await indexNames('posts')).toContain('posts_by_author_created');
     expect(await indexNames('refresh_tokens')).toContain(
       'uniq_refresh_token_hash',
@@ -44,14 +43,16 @@ describe('Declared indexes are built, not assumed (e2e)', () => {
   });
 
   it('rebuilds an index that went missing, and says which one', async () => {
-    await harness.connection.collection('notes').dropIndex('own_notes_by_tag');
-    expect(await indexNames('notes')).not.toContain('own_notes_by_tag');
+    await harness.connection
+      .collection('notes')
+      .dropIndex('own_notes_by_created');
+    expect(await indexNames('notes')).not.toContain('own_notes_by_created');
 
     const reports = await sync.sync();
 
-    expect(await indexNames('notes')).toContain('own_notes_by_tag');
+    expect(await indexNames('notes')).toContain('own_notes_by_created');
     expect(reports.flatMap((report) => report.created)).toEqual([
-      'own_notes_by_tag',
+      'own_notes_by_created',
     ]);
   });
 

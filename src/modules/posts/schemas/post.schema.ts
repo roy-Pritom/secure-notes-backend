@@ -93,12 +93,8 @@ export type PostModel = Model<PostDocument>;
 
 export const PostSchema = SchemaFactory.createForClass(Post);
 
-/*
- * One index: the `$lookup` that joins a user to their live posts, newest
- * first. `author` alone would serve the join but leave the sort in memory,
- * and `isDeleted` sits between the two equality keys and the sort key so the
- * active-only filter is read from the index rather than applied after it.
- */
+// Drives the `$lookup` join. `isDeleted` sits between the equality key and the
+// sort key so the active-only filter is read from the index, not applied after.
 PostSchema.index(
   { author: 1, isDeleted: 1, createdAt: -1 },
   { name: 'posts_by_author_created' },

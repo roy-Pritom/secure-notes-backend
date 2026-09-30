@@ -15,18 +15,7 @@ import { hashToken, tokenMatches } from '../utils';
 
 export const API_KEY_HEADER = 'x-api-key';
 
-/**
- * Gates the whole API behind a shared client key, ahead of the bearer token:
- * it identifies the calling application, where the JWT identifies the person.
- *
- * Runs before `JwtAuthGuard`, so an unknown client is turned away without ever
- * reaching credential handling. `@Public()` does not exempt a route — login and
- * register still belong to a known client — only `@SkipApiKey()` does.
- *
- * With `API_KEYS` unset the gate is inert, which keeps local development and
- * the e2e suite header-free; the environment refuses to boot in production
- * without at least one key, so that state cannot reach a deployment.
- */
+
 @Injectable()
 export class ApiKeyGuard implements CanActivate {
   private readonly logger = new Logger(ApiKeyGuard.name);

@@ -31,11 +31,9 @@ function paginate(
 }
 
 /**
- * Scenario 1 — users grouped by interest.
- *
- * Index: `active_users_by_interest` ({ isDeleted: 1, interests: 1 }). The
- * leading `$match` hits its prefix, and a supplied `interest` makes it an
- * exact two-key equality.
+ * Scenario 1 — users grouped by interest. Served by `active_users_by_interest`:
+ * the leading `$match` hits its prefix, and an `interest` makes it a two-key
+ * equality.
  */
 export function interestGroupsPipeline(
   skip: number,
@@ -79,13 +77,10 @@ export function interestGroupsPipeline(
 const POST_SEARCHABLE_FIELDS = ['title', 'body', 'excerpt', 'tags'] as const;
 
 /**
- * Scenario 2 — one user with their posts, joined in a single pass.
- *
- * Index: `posts_by_author_created` ({ author: 1, isDeleted: 1, createdAt: -1 })
- * drives the join on `author`, the sub-pipeline's active-only `$match`, and its
- * `$sort` — all three read straight off the one index. A `searchTerm` joins
- * that same `$match` so it is applied before the `$facet`, which keeps `total`
- * describing the filtered set rather than the whole authorship.
+ * Scenario 2 — one user with their posts in a single pass. The `$lookup` joins
+ * through `posts_by_author_created`, which also serves the sub-pipeline's
+ * `$match` and `$sort`. A `searchTerm` joins that `$match`, so `total`
+ * describes the filtered set rather than the whole authorship.
  */
 export function userPostsPipeline(
   userId: Types.ObjectId,

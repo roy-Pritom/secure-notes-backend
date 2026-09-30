@@ -36,7 +36,7 @@ export class RefreshTokensRepository {
     return result.modifiedCount === 1;
   }
 
-  /** Served by `user_sessions_by_expiry`. Returns how many were live. */
+  /** Served by `user_sessions`. Returns how many were live. */
   async revokeAllForUser(user: Types.ObjectId): Promise<number> {
     const result = await this.refreshTokenModel
       .updateMany(

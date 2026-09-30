@@ -36,7 +36,6 @@ export class UsersRepository {
     return this.userModel.findOne(this.live({ _id: id }), projection).exec();
   }
 
-
   async findByEmail(
     email: string,
     withCredentials = false,
@@ -85,7 +84,6 @@ export class UsersRepository {
       .exec();
   }
 
-  
   async softDeleteById(id: Types.ObjectId): Promise<UserDocument | null> {
     return this.updateById(id, {
       $set: { isDeleted: true, deletedAt: new Date() },
