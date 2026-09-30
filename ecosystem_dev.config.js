@@ -1,7 +1,7 @@
 module.exports = {
     apps: [
         {
-            script: "./dist/src/main.js",
+            script: "./dist/main.js",
             watch: false,
             exec_mode: "cluster",
             name: "[STAGE] Secure Note - API",
