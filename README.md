@@ -81,8 +81,8 @@ refuses to boot in production without at least one key.
 ```bash
 cp .env.example .env          # then set JWT_SECRET, JWT_REFRESH_SECRET, API_KEYS
 docker compose up -d mongo
-pnpm install
-pnpm start:dev
+npm install
+npm run start:dev
 ```
 
 Swagger UI is at `/api/docs` outside production.
@@ -110,9 +110,9 @@ until it expires — hence the second statement. Every admin after the first can
 made through `PATCH /users/:id`.
 
 ```bash
-pnpm test         # unit
-pnpm test:e2e     # end-to-end, on an in-memory mongod
-pnpm typecheck && pnpm lint && pnpm build
+npm test              # unit
+npm run test:e2e      # end-to-end, on an in-memory mongod
+npm run typecheck && npm run lint && npm run build
 ```
 
 ## API

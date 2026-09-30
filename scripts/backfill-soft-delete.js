@@ -102,7 +102,7 @@ async function main() {
     console.log(
       DRY_RUN
         ? '\nDry run only — nothing was written. Re-run without --dry-run to apply.'
-        : '\nDone. Next: pnpm db:indexes --prune',
+        : '\nDone. Next: npm run db:indexes -- --prune',
     );
   } finally {
     await client.close();

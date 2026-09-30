@@ -9,7 +9,7 @@ import { DATABASE_CONFIG_KEY, DatabaseConfig } from '../config';
 /**
  * Gives documents written before `searchTokens` existed their tokens, so they
  * are not silently missing from search. Rides on the same switch as the index
- * build: on boot in development, `pnpm db:search-tokens` as a deploy step.
+ * build: on boot in development, `npm run db:search-tokens` as a deploy step.
  */
 @Injectable()
 export class SearchTokensBackfillService implements OnApplicationBootstrap {

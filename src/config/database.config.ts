@@ -24,7 +24,7 @@ export default registerAs<DatabaseConfig>(DATABASE_CONFIG_KEY, () => ({
   ),
   debug: process.env.MONGODB_DEBUG === 'true',
   // Unset follows the environment: a developer's database keeps itself current,
-  // a production deploy runs `pnpm db:indexes` before the new code takes
+  // a production deploy runs `npm run db:indexes` before the new code takes
   // traffic. An explicit value wins either way.
   syncIndexesOnBoot:
     process.env.MONGODB_SYNC_INDEXES === undefined

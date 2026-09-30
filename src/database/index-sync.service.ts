@@ -34,7 +34,7 @@ export class IndexSyncService implements OnApplicationBootstrap {
 
     if (!syncIndexesOnBoot) {
       this.logger.log(
-        'Skipping index build (MONGODB_SYNC_INDEXES is off); run `pnpm db:indexes` as a deploy step',
+        'Skipping index build (MONGODB_SYNC_INDEXES is off); run `npm run db:indexes` as a deploy step',
       );
       return;
     }
